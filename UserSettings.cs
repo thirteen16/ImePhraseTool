@@ -4,40 +4,78 @@ namespace ImePhraseTool;
 
 public sealed record UserSettings
 {
-    public string OutputFolder { get; init; } = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+    public string OutputFolder { get; init; } =
+        Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+
     public string TxtName { get; init; } = "IME_phrases.txt";
     public string DatName { get; init; } = "UserDefinedPhrase.dat";
 
-    public float FontSize { get; init; } = 12F;
+    public float QuickPhraseFontSize { get; init; } = 13F;
 
-    public static string DefaultPath => Path.Combine(AppContext.BaseDirectory, "settings.json");
+    public static string DefaultPath =>
+        Path.Combine(AppContext.BaseDirectory, "settings.json");
 
     public static UserSettings Load(string path, out string? warning)
     {
         warning = null;
-        if (!File.Exists(path)) return new();
+
+        if (!File.Exists(path))
+            return new();
+
         try
         {
-            var settings = JsonSerializer.Deserialize<UserSettings>(File.ReadAllText(path))
-                ?? throw new JsonException("ï¿½ï¿½ï¿½ï¿½Îªï¿½Õ¡ï¿½");
-            // Older or partially populated settings retain defaults for missing fields.
+            var settings =
+                JsonSerializer.Deserialize<UserSettings>(
+                    File.ReadAllText(path))
+                ?? throw new JsonException("ÅäÖÃÎª¿Õ¡£");
+
             return settings with
             {
-                OutputFolder = settings.OutputFolder ?? new UserSettings().OutputFolder,
-                TxtName = settings.TxtName ?? "IME_phrases.txt",
-                DatName = settings.DatName ?? "UserDefinedPhrase.dat",
-                FontSize = float.IsFinite(settings.FontSize) ? Math.Clamp(settings.FontSize, 8F, 24F) : 12F
+                OutputFolder =
+                    settings.OutputFolder ??
+                    new UserSettings().OutputFolder,
+
+                TxtName =
+                    settings.TxtName ??
+                    "IME_phrases.txt",
+
+                DatName =
+                    settings.DatName ??
+                    "UserDefinedPhrase.dat",
+
+                QuickPhraseFontSize =
+                    float.IsFinite(settings.QuickPhraseFontSize)
+                        ? Math.Clamp(
+                            settings.QuickPhraseFontSize,
+                            8F,
+                            24F)
+                        : 13F
             };
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception ex)
+            when (ex is IOException
+                or UnauthorizedAccessException
+                or JsonException)
         {
-            warning = "ï¿½Þ·ï¿½ï¿½ï¿½È¡ï¿½Ï´ï¿½ï¿½ï¿½ï¿½Ã£ï¿½ï¿½ï¿½Ê¹ï¿½ï¿½Ä¬ï¿½ï¿½ï¿½ï¿½ï¿½Ã¡ï¿½";
+            warning =
+                "ÎÞ·¨¶ÁÈ¡ÉÏ´ÎÅäÖÃ£¬ÒÑÊ¹ÓÃÄ¬ÈÏÉèÖÃ¡£";
+
             return new();
         }
     }
 
-    public void Save(string path) => OutputFiles.Save(new[]
-    {
-        (path, JsonSerializer.SerializeToUtf8Bytes(this, new JsonSerializerOptions { WriteIndented = true }))
-    });
+    public void Save(string path) =>
+        OutputFiles.Save(
+            new[]
+            {
+                (
+                    path,
+                    JsonSerializer.SerializeToUtf8Bytes(
+                        this,
+                        new JsonSerializerOptions
+                        {
+                            WriteIndented = true
+                        })
+                )
+            });
 }
