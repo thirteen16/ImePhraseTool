@@ -7,34 +7,60 @@ namespace ImePhraseTool;
 public class MainForm : Form, IMessageFilter
 {
     private readonly string settingsPath;
-    private readonly System.Windows.Forms.Timer settingsTimer = new() { Interval = 600 };
+
+    private UserSettings currentSettings = new();
+
+    private readonly System.Windows.Forms.Timer settingsTimer =
+        new()
+        {
+            Interval = 600
+        };
+
     private bool applyingSettings;
-    private float quickPhraseFontSize = 13F;
+
+    private float quickPhraseFontSize =
+        UserSettings.BuiltInQuickPhraseFontSize;
+
     private int wheelDelta;
 
     private readonly TextBox outputFolder = new();
-    private readonly TextBox txtName = new() { Text = "IME_phrases.txt" };
-    private readonly TextBox datName = new() { Text = "UserDefinedPhrase.dat" };
 
-    private readonly TextBox quickPhrase = new()
+    private readonly TextBox txtName =
+        new()
+        {
+            Text = "IME_phrases.txt"
+        };
+
+    private readonly TextBox datName =
+        new()
+        {
+            Text = "UserDefinedPhrase.dat"
+        };
+
+    private readonly TextBox quickPhrase =
+        new()
+        {
+            PlaceholderText = "每行一条，例如：nihao,1,你好",
+            Multiline = true,
+            AcceptsReturn = true,
+            ScrollBars = ScrollBars.Vertical,
+            WordWrap = false
+        };
+
+    private readonly Label status =
+        new()
+        {
+            Text = "",
+            AutoSize = true,
+            Dock = DockStyle.Fill,
+            ForeColor = Color.FromArgb(100, 116, 139),
+            Visible = false
+        };
+
+    public MainForm()
+        : this(UserSettings.DefaultPath)
     {
-        PlaceholderText = "每行一条，例如：nihao,1,你好",
-        Multiline = true,
-        AcceptsReturn = true,
-        ScrollBars = ScrollBars.Vertical,
-        WordWrap = false
-    };
-
-    private readonly Label status = new()
-    {
-        Text = "",
-        AutoSize = true,
-        Dock = DockStyle.Fill,
-        ForeColor = Color.FromArgb(100, 116, 139),
-        Visible = false
-    };
-
-    public MainForm() : this(UserSettings.DefaultPath) { }
+    }
 
     public MainForm(string settingsPath)
     {
@@ -44,8 +70,9 @@ public class MainForm : Form, IMessageFilter
 
         Text = "微软拼音短语工具";
 
+        // 普通界面固定为 12 pt
         Font = new Font(
-            (SystemFonts.MessageBoxFont ?? SystemFonts.DefaultFont).FontFamily,
+            SystemFonts.MessageBoxFont.FontFamily,
             12F,
             FontStyle.Regular,
             GraphicsUnit.Point);
@@ -55,52 +82,89 @@ public class MainForm : Form, IMessageFilter
 
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
+
         StartPosition = FormStartPosition.CenterScreen;
 
+        // ========================================================
+        // 程序图标
+        // ========================================================
+
         using (var iconStream =
-               typeof(MainForm).Assembly.GetManifestResourceStream("ImePhraseTool.AppIcon"))
+               typeof(MainForm)
+                   .Assembly
+                   .GetManifestResourceStream("ImePhraseTool.AppIcon"))
         {
             if (iconStream is not null)
                 Icon = new Icon(iconStream);
         }
 
+        // ========================================================
+        // 初始窗口尺寸
+        // ========================================================
+
         Load += (_, _) =>
         {
             var area = Screen.FromControl(this).WorkingArea;
 
-            MinimumSize = new Size(
-                Math.Min((int)(area.Width * .9), Font.Height * 38),
-                Math.Min((int)(area.Height * .9), Font.Height * 22));
+            MinimumSize =
+                new Size(
+                    Math.Min(
+                        (int)(area.Width * .9),
+                        Font.Height * 38),
+                    Math.Min(
+                        (int)(area.Height * .9),
+                        Font.Height * 22));
 
-            Size = new Size(
-                Math.Max(MinimumSize.Width, (int)(area.Width * .55)),
-                Math.Max(MinimumSize.Height, (int)(area.Height * .52)));
+            Size =
+                new Size(
+                    Math.Max(
+                        MinimumSize.Width,
+                        (int)(area.Width * .55)),
+                    Math.Max(
+                        MinimumSize.Height,
+                        (int)(area.Height * .52)));
         };
 
         outputFolder.Text =
-            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            Environment.GetFolderPath(
+                Environment.SpecialFolder.DesktopDirectory);
 
-        var main = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            AutoScroll = true,
-            ColumnCount = 1,
-            RowCount = 4,
-            Padding = new Padding(12)
-        };
+        // ========================================================
+        // 主布局
+        // ========================================================
 
-        main.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        var main =
+            new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                AutoScroll = true,
+                ColumnCount = 1,
+                RowCount = 4,
+                Padding = new Padding(12)
+            };
+
+        main.ColumnStyles.Add(
+            new ColumnStyle(
+                SizeType.Percent,
+                100));
 
         foreach (int share in new[] { 46, 16, 38 })
-            main.RowStyles.Add(new RowStyle(SizeType.Percent, share));
+        {
+            main.RowStyles.Add(
+                new RowStyle(
+                    SizeType.Percent,
+                    share));
+        }
 
-        main.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        main.RowStyles.Add(
+            new RowStyle(
+                SizeType.AutoSize));
 
         Controls.Add(main);
 
-        // =========================
-        // 顶部设置区域
-        // =========================
+        // ========================================================
+        // 设置区域
+        // ========================================================
 
         var settings = Table(3, true);
 
@@ -109,10 +173,14 @@ public class MainForm : Form, IMessageFilter
             0,
             "目录",
             outputFolder,
-            Button("选择目录", SelectFolder));
+            Button(
+                "选择目录",
+                SelectFolder));
 
         settings.Controls.Add(
-            Button("恢复默认", ResetSettings),
+            Button(
+                "恢复默认",
+                ResetSettings),
             3,
             0);
 
@@ -121,14 +189,22 @@ public class MainForm : Form, IMessageFilter
             1,
             "TXT",
             txtName,
-            Button("定位文件", () => LocateFile(() => OutputPath(true))));
+            Button(
+                "定位文件",
+                () =>
+                    LocateFile(
+                        () => OutputPath(true))));
 
         AddRow(
             settings,
             2,
             "DAT",
             datName,
-            Button("定位文件", () => LocateFile(() => OutputPath(false))));
+            Button(
+                "定位文件",
+                () =>
+                    LocateFile(
+                        () => OutputPath(false))));
 
         settings.SetColumnSpan(
             settings.GetControlFromPosition(2, 1)!,
@@ -138,55 +214,82 @@ public class MainForm : Form, IMessageFilter
             settings.GetControlFromPosition(2, 2)!,
             2);
 
-        main.Controls.Add(Card(settings), 0, 0);
+        main.Controls.Add(
+            Card(settings),
+            0,
+            0);
 
-        // =========================
-        // 转换按钮
-        // =========================
+        // ========================================================
+        // 转换区域
+        // ========================================================
 
-        var conversions = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 4,
-            RowCount = 1,
-            Margin = new Padding(0, 6, 0, 6)
-        };
+        var conversions =
+            new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 4,
+                RowCount = 1,
+                Margin = new Padding(0, 6, 0, 6)
+            };
 
         for (int i = 0; i < 4; i++)
+        {
             conversions.ColumnStyles.Add(
-                new ColumnStyle(SizeType.Percent, 25));
+                new ColumnStyle(
+                    SizeType.Percent,
+                    25));
+        }
 
         conversions.RowStyles.Add(
-            new RowStyle(SizeType.Percent, 100));
+            new RowStyle(
+                SizeType.Percent,
+                100));
 
         conversions.Controls.Add(
-            Button("TXT → DAT", () => ConvertFile(true)),
+            Button(
+                "TXT → DAT",
+                () => ConvertFile(true)),
             0,
             0);
 
         conversions.Controls.Add(
-            Button("DAT → TXT", () => ConvertFile(false)),
+            Button(
+                "DAT → TXT",
+                () => ConvertFile(false)),
             1,
             0);
 
         conversions.Controls.Add(
-            Button("仅排序 TXT", SortTxt),
+            Button(
+                "仅排序 TXT",
+                SortTxt),
             2,
             0);
 
         conversions.Controls.Add(
-            Button("导入微软拼音", ImportPinyin, true),
+            Button(
+                "导入微软拼音",
+                ImportPinyin,
+                true),
             3,
             0);
 
-        main.Controls.Add(conversions, 0, 1);
+        main.Controls.Add(
+            conversions,
+            0,
+            1);
 
-        // =========================
+        // ========================================================
         // 快速添加区域
-        // =========================
+        // ========================================================
 
         var quick = Table(1);
-        var addButton = Button("添加", QuickAdd, true);
+
+        var addButton =
+            Button(
+                "添加",
+                QuickAdd,
+                true);
 
         AddRow(
             quick,
@@ -196,16 +299,17 @@ public class MainForm : Form, IMessageFilter
             addButton);
 
         addButton.Dock = DockStyle.None;
+
         addButton.Anchor =
-            AnchorStyles.Left | AnchorStyles.Right;
+            AnchorStyles.Left |
+            AnchorStyles.Right;
 
         quickPhrase.Dock = DockStyle.None;
-        quickPhrase.Anchor =
-            AnchorStyles.Left | AnchorStyles.Right;
 
-        // 窗口真正显示以后：
-        // 1. 设置输入框高度
-        // 2. 按最终窗口尺寸重新居中
+        quickPhrase.Anchor =
+            AnchorStyles.Left |
+            AnchorStyles.Right;
+
         Shown += (_, _) =>
         {
             addButton.Height =
@@ -215,9 +319,6 @@ public class MainForm : Form, IMessageFilter
             CenterToScreen();
         };
 
-        // DPI 改变时调整控件高度。
-        // 使用主窗口字体高度，不使用 quickPhrase 字体高度，
-        // 避免 Ctrl+滚轮改变文字字号时输入框跟着变高。
         DpiChanged += (_, _) =>
         {
             addButton.Height =
@@ -225,26 +326,41 @@ public class MainForm : Form, IMessageFilter
                     Font.Height * 5 + 8;
         };
 
-        main.Controls.Add(Card(quick), 0, 2);
+        main.Controls.Add(
+            Card(quick),
+            0,
+            2);
 
-        // =========================
-        // 状态栏
-        // =========================
+        // ========================================================
+        // 状态区域
+        // ========================================================
 
-        main.Controls.Add(status, 0, 3);
+        main.Controls.Add(
+            status,
+            0,
+            3);
 
         status.TextChanged += (_, _) =>
-            status.Visible = status.Text.Length > 0;
+            status.Visible =
+                status.Text.Length > 0;
 
-        // =========================
+        // ========================================================
         // 加载配置
-        // =========================
+        // ========================================================
 
-        ApplySettings(
-            UserSettings.Load(settingsPath, out var warning));
+        currentSettings =
+            UserSettings.Load(
+                settingsPath,
+                out var warning);
+
+        ApplySettings(currentSettings);
 
         if (warning is not null)
             status.Text = warning;
+
+        // ========================================================
+        // 延迟保存
+        // ========================================================
 
         settingsTimer.Tick += (_, _) =>
             SaveSettings();
@@ -266,10 +382,9 @@ public class MainForm : Form, IMessageFilter
             };
         }
 
+        // 关闭时保存。
+        // 因此 settings.json 不存在也不影响第一次启动。
         FormClosing += (_, _) =>
-            SaveSettings();
-
-        if (!File.Exists(settingsPath))
             SaveSettings();
 
         ResumeLayout(true);
@@ -279,7 +394,8 @@ public class MainForm : Form, IMessageFilter
 
     // ============================================================
     // Ctrl + 滚轮
-    // 仅当鼠标位于“短语”输入框上时修改该输入框文字字号
+    //
+    // 只有鼠标位于“短语”输入框时才改变字号。
     // ============================================================
 
     public bool PreFilterMessage(ref Message message)
@@ -295,9 +411,9 @@ public class MainForm : Form, IMessageFilter
             return false;
         }
 
-        // 根据鼠标实际位置判断，而不是焦点。
         var mousePosition =
-            quickPhrase.PointToClient(Cursor.Position);
+            quickPhrase.PointToClient(
+                Cursor.Position);
 
         if (!quickPhrase.ClientRectangle.Contains(mousePosition))
         {
@@ -305,8 +421,11 @@ public class MainForm : Form, IMessageFilter
             return false;
         }
 
-        wheelDelta += unchecked(
-            (short)((message.WParam.ToInt64() >> 16) & 0xffff));
+        wheelDelta +=
+            unchecked(
+                (short)(
+                    (message.WParam.ToInt64() >> 16)
+                    & 0xffff));
 
         int steps = wheelDelta / 120;
         wheelDelta %= 120;
@@ -316,33 +435,37 @@ public class MainForm : Form, IMessageFilter
             SetQuickPhraseFontSize(
                 quickPhraseFontSize + steps);
 
-            // 延迟保存配置，避免滚轮连续滚动时反复写磁盘。
             settingsTimer.Stop();
             settingsTimer.Start();
         }
 
-        // 阻止输入框自己处理 Ctrl+滚轮。
         return true;
     }
+
+    // ============================================================
+    // 设置快速添加输入框字号
+    //
+    // 重要：
+    // 不 Dispose quickPhrase 原来的 Font。
+    // ============================================================
 
     private void SetQuickPhraseFontSize(float size)
     {
         quickPhraseFontSize =
             float.IsFinite(size)
                 ? Math.Clamp(size, 8F, 24F)
-                : 13F;
+                : UserSettings.BuiltInQuickPhraseFontSize;
 
-        var oldFont = quickPhrase.Font;
-
-        quickPhrase.Font = new Font(
-            oldFont.FontFamily,
-            quickPhraseFontSize,
-            oldFont.Style,
-            GraphicsUnit.Point);
+        quickPhrase.Font =
+            new Font(
+                Font.FontFamily,
+                quickPhraseFontSize,
+                FontStyle.Regular,
+                GraphicsUnit.Point);
     }
 
     // ============================================================
-    // 设置
+    // 应用设置
     // ============================================================
 
     private void ApplySettings(UserSettings settings)
@@ -351,12 +474,17 @@ public class MainForm : Form, IMessageFilter
 
         try
         {
-            outputFolder.Text = settings.OutputFolder;
-            txtName.Text = settings.TxtName;
-            datName.Text = settings.DatName;
+            outputFolder.Text =
+                settings.EffectiveOutputFolder;
+
+            txtName.Text =
+                settings.EffectiveTxtName;
+
+            datName.Text =
+                settings.EffectiveDatName;
 
             SetQuickPhraseFontSize(
-                settings.QuickPhraseFontSize);
+                settings.EffectiveQuickPhraseFontSize);
         }
         finally
         {
@@ -364,19 +492,33 @@ public class MainForm : Form, IMessageFilter
         }
     }
 
+    // ============================================================
+    // 保存设置
+    // ============================================================
+
     private bool SaveSettings()
     {
         settingsTimer.Stop();
 
         try
         {
-            new UserSettings
-            {
-                OutputFolder = outputFolder.Text,
-                TxtName = txtName.Text,
-                DatName = datName.Text,
-                QuickPhraseFontSize = quickPhraseFontSize
-            }.Save(settingsPath);
+            currentSettings =
+                currentSettings with
+                {
+                    OutputFolder =
+                        outputFolder.Text,
+
+                    TxtName =
+                        txtName.Text,
+
+                    DatName =
+                        datName.Text,
+
+                    QuickPhraseFontSize =
+                        quickPhraseFontSize
+                };
+
+            currentSettings.Save(settingsPath);
 
             return true;
         }
@@ -391,16 +533,36 @@ public class MainForm : Form, IMessageFilter
         }
     }
 
+    // ============================================================
+    // 恢复默认
+    // ============================================================
+
     private void ResetSettings()
     {
-        ApplySettings(new UserSettings());
+        currentSettings =
+            currentSettings with
+            {
+                OutputFolder =
+                    currentSettings.EffectiveDefaultOutputFolder,
+
+                TxtName =
+                    currentSettings.EffectiveDefaultTxtName,
+
+                DatName =
+                    currentSettings.EffectiveDefaultDatName,
+
+                QuickPhraseFontSize =
+                    currentSettings.EffectiveDefaultQuickPhraseFontSize
+            };
+
+        ApplySettings(currentSettings);
 
         if (SaveSettings())
             status.Text = "已恢复默认";
     }
 
     // ============================================================
-    // 文件定位
+    // 定位文件
     // ============================================================
 
     private void LocateFile(Func<string> resolvePath)
@@ -464,22 +626,26 @@ public class MainForm : Form, IMessageFilter
     }
 
     // ============================================================
-    // UI 辅助
+    // 表格
     // ============================================================
 
     private static TableLayoutPanel Table(
         int rows,
         bool extraAction = false)
     {
-        var table = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = extraAction ? 4 : 3,
-            RowCount = rows
-        };
+        var table =
+            new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount =
+                    extraAction ? 4 : 3,
+                RowCount = rows
+            };
 
         table.ColumnStyles.Add(
-            new ColumnStyle(SizeType.Percent, 9));
+            new ColumnStyle(
+                SizeType.Percent,
+                9));
 
         table.ColumnStyles.Add(
             new ColumnStyle(
@@ -494,7 +660,9 @@ public class MainForm : Form, IMessageFilter
         if (extraAction)
         {
             table.ColumnStyles.Add(
-                new ColumnStyle(SizeType.Percent, 16));
+                new ColumnStyle(
+                    SizeType.Percent,
+                    16));
         }
 
         for (int i = 0; i < rows; i++)
@@ -508,41 +676,55 @@ public class MainForm : Form, IMessageFilter
         return table;
     }
 
+    // ============================================================
+    // 卡片
+    // ============================================================
+
     private Control Card(Control content)
     {
-        var group = new Panel
-        {
-            BackColor = Color.White,
-            Dock = DockStyle.Fill,
-            Padding = new Padding(8),
-            Margin = new Padding(0, 6, 0, 6)
-        };
+        var group =
+            new Panel
+            {
+                BackColor = Color.White,
+                Dock = DockStyle.Fill,
+                Padding = new Padding(8),
+                Margin = new Padding(0, 6, 0, 6)
+            };
 
         group.Controls.Add(content);
 
         return group;
     }
 
+    // ============================================================
+    // 按钮
+    // ============================================================
+
     private static Button Button(
         string text,
         Action action,
         bool primary = false)
     {
-        var button = new Button
-        {
-            Text = text,
-            Dock = DockStyle.Fill,
-            Margin = new Padding(4),
-            AutoSize = false,
-            FlatStyle = FlatStyle.Flat,
-            Cursor = Cursors.Hand,
-            BackColor = primary
-                ? Color.FromArgb(37, 99, 235)
-                : Color.White,
-            ForeColor = primary
-                ? Color.White
-                : Color.FromArgb(51, 65, 85)
-        };
+        var button =
+            new Button
+            {
+                Text = text,
+                Dock = DockStyle.Fill,
+                Margin = new Padding(4),
+                AutoSize = false,
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand,
+
+                BackColor =
+                    primary
+                        ? Color.FromArgb(37, 99, 235)
+                        : Color.White,
+
+                ForeColor =
+                    primary
+                        ? Color.White
+                        : Color.FromArgb(51, 65, 85)
+            };
 
         button.FlatAppearance.BorderColor =
             Color.FromArgb(218, 225, 235);
@@ -560,6 +742,10 @@ public class MainForm : Form, IMessageFilter
 
         return button;
     }
+
+    // ============================================================
+    // 添加一行控件
+    // ============================================================
 
     private static void AddRow(
         TableLayoutPanel table,
@@ -580,11 +766,13 @@ public class MainForm : Form, IMessageFilter
             row);
 
         field.Dock = DockStyle.None;
+
         field.Anchor =
             AnchorStyles.Left |
             AnchorStyles.Right;
 
         field.BackColor = Color.White;
+
         field.ForeColor =
             Color.FromArgb(30, 41, 59);
 
@@ -619,8 +807,8 @@ public class MainForm : Form, IMessageFilter
                 UseDescriptionForTitle = true
             };
 
-        if (dialog.ShowDialog(this) ==
-            DialogResult.OK)
+        if (dialog.ShowDialog(this)
+            == DialogResult.OK)
         {
             outputFolder.Text =
                 dialog.SelectedPath;
@@ -650,23 +838,26 @@ public class MainForm : Form, IMessageFilter
         }
 
         var name =
-            (txt ? txtName.Text : datName.Text)
+            (txt
+                ? txtName.Text
+                : datName.Text)
             .Trim();
 
         if (name.Length == 0)
         {
-            name = txt
-                ? "IME_phrases.txt"
-                : "UserDefinedPhrase.dat";
+            name =
+                txt
+                    ? "IME_phrases.txt"
+                    : "UserDefinedPhrase.dat";
         }
 
         string extension =
             txt ? ".txt" : ".dat";
 
         if (name.IndexOfAny(
-                Path.GetInvalidFileNameChars()) >= 0 ||
-            name.EndsWith('.') ||
-            !string.Equals(
+                Path.GetInvalidFileNameChars()) >= 0
+            || name.EndsWith('.')
+            || !string.Equals(
                 Path.GetExtension(name),
                 extension,
                 StringComparison.OrdinalIgnoreCase))
@@ -676,11 +867,13 @@ public class MainForm : Form, IMessageFilter
         }
 
         return Path.GetFullPath(
-            Path.Combine(folder, name));
+            Path.Combine(
+                folder,
+                name));
     }
 
     // ============================================================
-    // 打开微软拼音设置
+    // 导入微软拼音
     // ============================================================
 
     private void ImportPinyin()
@@ -777,15 +970,18 @@ public class MainForm : Form, IMessageFilter
                             string.Equals(
                                 x.Path,
                                 Path.GetFullPath(input),
-                                StringComparison.OrdinalIgnoreCase) &&
-                            !(fromTxt &&
-                              x.Path == files[0].Path)))
+                                StringComparison.OrdinalIgnoreCase)
+                            &&
+                            !(fromTxt
+                              && x.Path == files[0].Path)))
                 {
                     throw new InvalidDataException(
                         "输出文件不能覆盖输入文件。");
                 }
 
-                return (entries.Count, files);
+                return (
+                    entries.Count,
+                    files);
             },
             rewritesSourceTxt: fromTxt);
     }
@@ -847,10 +1043,11 @@ public class MainForm : Form, IMessageFilter
 
             var result =
                 await Task.Run(
-                    () => BatchPhraseAdder.Add(
-                        txtPath,
-                        datPath,
-                        input));
+                    () =>
+                        BatchPhraseAdder.Add(
+                            txtPath,
+                            datPath,
+                            input));
 
             status.Text =
                 $"处理完成：新增 {result.Added.Count} 条，" +
@@ -861,26 +1058,32 @@ public class MainForm : Form, IMessageFilter
                 $"{entry.Pinyin},{entry.Position},{entry.Phrase}";
 
             var details =
-                status.Text +
-                "\r\n" +
-                (
-                    result.Added.Count == 0 &&
-                    result.Replaced.Count == 0
-                        ? "内容均未变化，文件未修改。"
-                        : $"合并后共 {result.Total} 条短语，TXT 和 DAT 已按升序保存。"
-                ) +
-                "\r\n\r\n成功新增（最终保存内容）：\r\n" +
-                (
+                status.Text
+                + "\r\n"
+                + (
                     result.Added.Count == 0
+                    && result.Replaced.Count == 0
+
+                        ? "内容均未变化，文件未修改。"
+
+                        : $"合并后共 {result.Total} 条短语，TXT 和 DAT 已按升序保存。"
+                )
+                + "\r\n\r\n成功新增（最终保存内容）：\r\n"
+                + (
+                    result.Added.Count == 0
+
                         ? "（无）"
+
                         : string.Join(
                             "\r\n",
                             result.Added.Select(Format))
-                ) +
-                "\r\n\r\n替换记录（按输入顺序，同一拼音＋位置以最后一条为准）：\r\n" +
-                (
+                )
+                + "\r\n\r\n替换记录（按输入顺序，同一拼音＋位置以最后一条为准）：\r\n"
+                + (
                     result.Replaced.Count == 0
+
                         ? "（无）"
+
                         : string.Join(
                             "\r\n",
                             result.Replaced.Select(
@@ -888,11 +1091,13 @@ public class MainForm : Form, IMessageFilter
                                     $"第 {x.Line} 行：" +
                                     $"{string.Join(" / ", x.Before.Select(Format))} " +
                                     $"→ {Format(x.Entry)}"))
-                ) +
-                "\r\n\r\n未变化（拼音、位置及文本完全相同，跳过）：\r\n" +
-                (
+                )
+                + "\r\n\r\n未变化（拼音、位置及文本完全相同，跳过）：\r\n"
+                + (
                     result.Duplicates.Count == 0
+
                         ? "（无）"
+
                         : string.Join(
                             "\r\n",
                             result.Duplicates.Select(
@@ -912,8 +1117,7 @@ public class MainForm : Form, IMessageFilter
                     StartPosition =
                         FormStartPosition.CenterParent,
                     Size = new Size(720, 500),
-                    MinimumSize =
-                        new Size(500, 320),
+                    MinimumSize = new Size(500, 320),
                     MinimizeBox = false,
                     MaximizeBox = false
                 };
@@ -923,8 +1127,7 @@ public class MainForm : Form, IMessageFilter
                 {
                     Multiline = true,
                     ReadOnly = true,
-                    ScrollBars =
-                        ScrollBars.Both,
+                    ScrollBars = ScrollBars.Both,
                     WordWrap = false,
                     Dock = DockStyle.Fill,
                     Text = details
@@ -936,8 +1139,7 @@ public class MainForm : Form, IMessageFilter
                     Text = "确定",
                     Dock = DockStyle.Bottom,
                     Height = 42,
-                    DialogResult =
-                        DialogResult.OK
+                    DialogResult = DialogResult.OK
                 };
 
             dialog.Controls.Add(report);
@@ -970,64 +1172,79 @@ public class MainForm : Form, IMessageFilter
     }
 
     // ============================================================
-    // 保存转换结果
+    // 转换 / 保存
     // ============================================================
 
     private async Task RunConversion(
-        Func<(int Count,
-            List<(string Path, byte[] Data)> Files)> prepare,
+        Func<(
+            int Count,
+            List<(string Path, byte[] Data)> Files
+        )> prepare,
         bool rewritesSourceTxt = false,
         bool sortOnly = false)
     {
         try
         {
-            var result =
-                prepare();
+            var result = prepare();
 
             var existing =
                 result.Files
-                    .Where(x => File.Exists(x.Path))
-                    .Select(x => x.Path)
+                    .Where(
+                        x => File.Exists(x.Path))
+                    .Select(
+                        x => x.Path)
                     .ToArray();
 
             var confirmation =
                 sortOnly
-                    ? "将按拼音 → 位置 → 输出文本升序排序，并写回原 TXT：\n\n" +
-                      result.Files[0].Path +
-                      "\n\n空行和注释将被移除，保存为 UTF-8。" +
-                      "\n不会生成或修改 DAT。" +
-                      "\n\n是否继续？选择“否”不会修改任何文件。"
+
+                    ? "将按拼音 → 位置 → 输出文本升序排序，并写回原 TXT：\n\n"
+                      + result.Files[0].Path
+                      + "\n\n空行和注释将被移除，保存为 UTF-8。"
+                      + "\n不会生成或修改 DAT。"
+                      + "\n\n是否继续？选择“否”不会修改任何文件。"
 
                     : rewritesSourceTxt
-                        ? "本次 TXT → DAT 将执行以下操作：\n\n" +
-                          "1. 原 TXT 按升序排序后写回（不是只读取）：\n" +
-                          result.Files[0].Path +
-                          "\n空行和注释将被移除，保存为 UTF-8。\n\n" +
-                          (
+
+                        ? "本次 TXT → DAT 将执行以下操作：\n\n"
+                          + "1. 原 TXT 按升序排序后写回（不是只读取）：\n"
+                          + result.Files[0].Path
+                          + "\n空行和注释将被移除，保存为 UTF-8。\n\n"
+                          + (
                               File.Exists(result.Files[1].Path)
+
                                   ? "2. 覆盖已有 DAT：\n"
+
                                   : "2. 生成新 DAT：\n"
-                          ) +
-                          result.Files[1].Path +
-                          "\n\n是否继续？选择“否”不会修改任何文件。"
+                          )
+                          + result.Files[1].Path
+                          + "\n\n是否继续？选择“否”不会修改任何文件。"
 
-                        : "以下文件已存在，是否覆盖？\n\n" +
-                          string.Join("\n", existing);
+                        : "以下文件已存在，是否覆盖？\n\n"
+                          + string.Join(
+                              "\n",
+                              existing);
 
-            if ((sortOnly ||
-                 rewritesSourceTxt ||
-                 existing.Length > 0) &&
+            if ((sortOnly
+                 || rewritesSourceTxt
+                 || existing.Length > 0)
+                &&
                 MessageBox.Show(
                     this,
                     confirmation,
+
                     sortOnly
                         ? "确认 TXT 排序"
+
                         : rewritesSourceTxt
                             ? "确认排序写回与转换"
+
                             : "确认覆盖",
+
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Question,
                     MessageBoxDefaultButton.Button2)
+
                 != DialogResult.Yes)
             {
                 return;
@@ -1036,26 +1253,35 @@ public class MainForm : Form, IMessageFilter
             Enabled = false;
             UseWaitCursor = true;
 
-            status.Text =
-                "正在保存…";
+            status.Text = "正在保存…";
 
             await Task.Run(
-                () => OutputFiles.Save(result.Files));
+                () =>
+                    OutputFiles.Save(
+                        result.Files));
 
             status.Text =
-                $"已完成：{result.Count} 条短语，已按升序保存。" +
-                (sortOnly ? "DAT 未修改。" : "");
+                $"已完成：{result.Count} 条短语，已按升序保存。"
+                + (
+                    sortOnly
+                        ? "DAT 未修改。"
+                        : ""
+                );
 
             MessageBox.Show(
                 this,
-                status.Text +
-                "\n\n" +
-                string.Join(
+
+                status.Text
+                + "\n\n"
+                + string.Join(
                     "\n",
-                    result.Files.Select(x => x.Path)),
+                    result.Files.Select(
+                        x => x.Path)),
+
                 sortOnly
                     ? "排序完成"
                     : "转换完成",
+
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
@@ -1069,9 +1295,11 @@ public class MainForm : Form, IMessageFilter
             MessageBox.Show(
                 this,
                 ex.Message,
+
                 sortOnly
                     ? "排序失败"
                     : "转换失败",
+
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
