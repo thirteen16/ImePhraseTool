@@ -15,7 +15,7 @@ public class MainForm : Form, IMessageFilter
     private readonly TextBox outputFolder = new();
     private readonly TextBox txtName = new() { Text = "IME_phrases.txt" };
     private readonly TextBox datName = new() { Text = "UserDefinedPhrase.dat" };
-    private readonly TextBox quickPhrase = new() { PlaceholderText = "æ¯è¡Œä¸€æ¡ï¼Œä¾‹å¦‚ï¼šnihao,1,ä½ å¥½", Multiline = true,
+    private readonly TextBox quickPhrase = new() { PlaceholderText = "Ã¿ĞĞÒ»Ìõ£¬ÀıÈç£ºnihao,1,ÄãºÃ", Multiline = true,
         AcceptsReturn = true, ScrollBars = ScrollBars.Vertical, WordWrap = false };
     private readonly Label status = new() { Text = "", AutoSize = true, Dock = DockStyle.Fill,
         ForeColor = Color.FromArgb(100, 116, 139), Visible = false };
@@ -26,7 +26,7 @@ public class MainForm : Form, IMessageFilter
     {
         this.settingsPath = settingsPath;
         SuspendLayout();
-        Text = "å¾®è½¯æ‹¼éŸ³çŸ­è¯­å·¥å…·";
+        Text = "Î¢ÈíÆ´Òô¶ÌÓï¹¤¾ß";
         SetFontSize(12F);
         BackColor = Color.FromArgb(245, 247, 251);
         ForeColor = Color.FromArgb(30, 41, 59);
@@ -50,29 +50,33 @@ public class MainForm : Form, IMessageFilter
         main.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         Controls.Add(main);
         var settings = Table(3, true);
-        AddRow(settings, 0, "ç›®å½•", outputFolder, Button("é€‰æ‹©ç›®å½•", SelectFolder));
-        settings.Controls.Add(Button("æ¢å¤é»˜è®¤", ResetSettings), 3, 0);
-        AddRow(settings, 1, "TXT", txtName, Button("å®šä½æ–‡ä»¶", () => LocateFile(() => OutputPath(true))));
-        AddRow(settings, 2, "DAT", datName, Button("å®šä½æ–‡ä»¶", () => LocateFile(() => OutputPath(false))));
+        AddRow(settings, 0, "Ä¿Â¼", outputFolder, Button("Ñ¡ÔñÄ¿Â¼", SelectFolder));
+        settings.Controls.Add(Button("»Ö¸´Ä¬ÈÏ", ResetSettings), 3, 0);
+        AddRow(settings, 1, "TXT", txtName, Button("¶¨Î»ÎÄ¼ş", () => LocateFile(() => OutputPath(true))));
+        AddRow(settings, 2, "DAT", datName, Button("¶¨Î»ÎÄ¼ş", () => LocateFile(() => OutputPath(false))));
         settings.SetColumnSpan(settings.GetControlFromPosition(2, 1)!, 2);
         settings.SetColumnSpan(settings.GetControlFromPosition(2, 2)!, 2);
         main.Controls.Add(Card(settings), 0, 0);
         var conversions = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 1, Margin = new Padding(0, 6, 0, 6) };
         for (int i = 0; i < 4; i++) conversions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
         conversions.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        conversions.Controls.Add(Button("TXT â†’ DAT", () => ConvertFile(true)), 0, 0);
-        conversions.Controls.Add(Button("DAT â†’ TXT", () => ConvertFile(false)), 1, 0);
-        conversions.Controls.Add(Button("ä»…æ’åº TXT", SortTxt), 2, 0);
-        conversions.Controls.Add(Button("å¯¼å…¥å¾®è½¯æ‹¼éŸ³", ImportPinyin, true), 3, 0);
+        conversions.Controls.Add(Button("TXT ¡ú DAT", () => ConvertFile(true)), 0, 0);
+        conversions.Controls.Add(Button("DAT ¡ú TXT", () => ConvertFile(false)), 1, 0);
+        conversions.Controls.Add(Button("½öÅÅĞò TXT", SortTxt), 2, 0);
+        conversions.Controls.Add(Button("µ¼ÈëÎ¢ÈíÆ´Òô", ImportPinyin, true), 3, 0);
         main.Controls.Add(conversions, 0, 1);
         var quick = Table(1);
-        var addButton = Button("æ·»åŠ ", QuickAdd, true);
-        AddRow(quick, 0, "çŸ­è¯­", quickPhrase, addButton);
+        var addButton = Button("Ìí¼Ó", QuickAdd, true);
+        AddRow(quick, 0, "¶ÌÓï", quickPhrase, addButton);
         addButton.Dock = DockStyle.None;
         addButton.Anchor = AnchorStyles.Left | AnchorStyles.Right;
         quickPhrase.Dock = DockStyle.None;
         quickPhrase.Anchor = AnchorStyles.Left | AnchorStyles.Right;
-        Shown += (_, _) => addButton.Height = quickPhrase.Height = quickPhrase.Font.Height * 5 + 8;
+        Shown += (_, _) =>
+        {
+            addButton.Height = quickPhrase.Height = quickPhrase.Font.Height * 5 + 8;
+            CenterToScreen();
+        };
         DpiChanged += (_, _) => addButton.Height = quickPhrase.Height = quickPhrase.Font.Height * 5 + 8;
         quickPhrase.FontChanged += (_, _) => addButton.Height = quickPhrase.Height = quickPhrase.Font.Height * 5 + 8;
         main.Controls.Add(Card(quick), 0, 2);
@@ -156,14 +160,14 @@ public class MainForm : Form, IMessageFilter
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            status.Text = "é…ç½®ä¿å­˜å¤±è´¥ï¼š" + ex.Message;
+            status.Text = "ÅäÖÃ±£´æÊ§°Ü£º" + ex.Message;
             return false;
         }
     }
     private void ResetSettings()
     {
         ApplySettings(new UserSettings());
-        if (SaveSettings()) status.Text = "å·²æ¢å¤é»˜è®¤";
+        if (SaveSettings()) status.Text = "ÒÑ»Ö¸´Ä¬ÈÏ";
     }
     private void LocateFile(Func<string> resolvePath)
     {
@@ -177,12 +181,12 @@ public class MainForm : Form, IMessageFilter
                 var directory = Path.GetDirectoryName(path)!;
                 Directory.CreateDirectory(directory);
                 Process.Start(new ProcessStartInfo(directory) { UseShellExecute = true });
-                status.Text = "æ–‡ä»¶å°šä¸å­˜åœ¨ï¼Œå·²æ‰“å¼€å¯¹åº”ç›®å½•ï¼š" + directory;
+                status.Text = "ÎÄ¼şÉĞ²»´æÔÚ£¬ÒÑ´ò¿ª¶ÔÓ¦Ä¿Â¼£º" + directory;
             }
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "æ— æ³•å®šä½æ–‡ä»¶", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, ex.Message, "ÎŞ·¨¶¨Î»ÎÄ¼ş", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
     protected override void Dispose(bool disposing)
@@ -237,20 +241,20 @@ public class MainForm : Form, IMessageFilter
     }
     private void SelectFolder()
     {
-        using var dialog = new FolderBrowserDialog { SelectedPath = outputFolder.Text, Description = "é€‰æ‹©ç”Ÿæˆç›®å½•", UseDescriptionForTitle = true };
+        using var dialog = new FolderBrowserDialog { SelectedPath = outputFolder.Text, Description = "Ñ¡ÔñÉú³ÉÄ¿Â¼", UseDescriptionForTitle = true };
         if (dialog.ShowDialog(this) == DialogResult.OK) outputFolder.Text = dialog.SelectedPath;
     }
     private string OutputPath(bool txt)
     {
         string folder = outputFolder.Text.Trim();
         if (folder.Length == 0) folder = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-        if (!Path.IsPathFullyQualified(folder)) throw new InvalidDataException("ç”Ÿæˆç›®å½•å¿…é¡»æ˜¯å®Œæ•´è·¯å¾„ï¼Œè¯·ä½¿ç”¨â€œé€‰æ‹©ç›®å½•â€ã€‚");
+        if (!Path.IsPathFullyQualified(folder)) throw new InvalidDataException("Éú³ÉÄ¿Â¼±ØĞëÊÇÍêÕûÂ·¾¶£¬ÇëÊ¹ÓÃ¡°Ñ¡ÔñÄ¿Â¼¡±¡£");
         var name = (txt ? txtName.Text : datName.Text).Trim();
         if (name.Length == 0) name = txt ? "IME_phrases.txt" : "UserDefinedPhrase.dat";
         string extension = txt ? ".txt" : ".dat";
         if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name.EndsWith('.') ||
             !string.Equals(Path.GetExtension(name), extension, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException($"æ–‡ä»¶åé¡»ä¸ºæœ‰æ•ˆçš„ {extension} æ–‡ä»¶åï¼Œä¸èƒ½åŒ…å«ç›®å½•ã€‚");
+            throw new InvalidDataException($"ÎÄ¼şÃûĞëÎªÓĞĞ§µÄ {extension} ÎÄ¼şÃû£¬²»ÄÜ°üº¬Ä¿Â¼¡£");
         return Path.GetFullPath(Path.Combine(folder, name));
     }
     private void ImportPinyin()
@@ -260,15 +264,15 @@ public class MainForm : Form, IMessageFilter
             var folder = outputFolder.Text.Trim();
             if (folder.Length == 0) folder = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
             if (!Path.IsPathFullyQualified(folder))
-                throw new InvalidDataException("ç›®å½•å¿…é¡»æ˜¯å®Œæ•´è·¯å¾„ï¼Œè¯·ä½¿ç”¨â€œé€‰æ‹©ç›®å½•â€ã€‚");
+                throw new InvalidDataException("Ä¿Â¼±ØĞëÊÇÍêÕûÂ·¾¶£¬ÇëÊ¹ÓÃ¡°Ñ¡ÔñÄ¿Â¼¡±¡£");
             Clipboard.SetText(Path.GetFullPath(folder));
-            status.Text = "ç›®å½•è·¯å¾„å·²å¤åˆ¶ã€‚";
+            status.Text = "Ä¿Â¼Â·¾¶ÒÑ¸´ÖÆ¡£";
             Process.Start(new ProcessStartInfo("ms-settings:regionlanguage-chsime-pinyin-udp") { UseShellExecute = true });
-            status.Text = "ç›®å½•è·¯å¾„å·²å¤åˆ¶ï¼Œè¯·åœ¨ç³»ç»Ÿé¡µé¢ç‚¹å‡»â€œå¯¼å…¥â€å¹¶é€‰æ‹© DAT æ–‡ä»¶ã€‚";
+            status.Text = "Ä¿Â¼Â·¾¶ÒÑ¸´ÖÆ£¬ÇëÔÚÏµÍ³Ò³Ãæµã»÷¡°µ¼Èë¡±²¢Ñ¡Ôñ DAT ÎÄ¼ş¡£";
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "æ— æ³•å¤åˆ¶ç›®å½•æˆ–æ‰“å¼€è®¾ç½®", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, ex.Message, "ÎŞ·¨¸´ÖÆÄ¿Â¼»ò´ò¿ªÉèÖÃ", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
     private async void ConvertFile(bool fromTxt)
@@ -276,13 +280,13 @@ public class MainForm : Form, IMessageFilter
         await RunConversion(() =>
         {
             var input = OutputPath(fromTxt);
-            if (!File.Exists(input)) throw new InvalidDataException($"è¾“å…¥æ–‡ä»¶ä¸å­˜åœ¨ï¼š\n{input}\n\nè¯·æ£€æŸ¥ä¸Šæ–¹ç›®å½•å’Œæ–‡ä»¶åï¼Œæˆ–å°†æºæ–‡ä»¶æ”¾å…¥è¯¥ç›®å½•ã€‚");
+            if (!File.Exists(input)) throw new InvalidDataException($"ÊäÈëÎÄ¼ş²»´æÔÚ£º\n{input}\n\nÇë¼ì²éÉÏ·½Ä¿Â¼ºÍÎÄ¼şÃû£¬»ò½«Ô´ÎÄ¼ş·ÅÈë¸ÃÄ¿Â¼¡£");
             var entries = fromTxt ? PhraseConverter.ReadTxt(input) : PhraseConverter.ReadDat(input);
             var files = new List<(string Path, byte[] Data)> { (OutputPath(true), PhraseConverter.EncodeTxt(entries)) };
             if (fromTxt) files.Add((OutputPath(false), PhraseConverter.EncodeDat(entries)));
             if (files.Any(x => string.Equals(x.Path, Path.GetFullPath(input), StringComparison.OrdinalIgnoreCase) &&
                 !(fromTxt && x.Path == files[0].Path)))
-                throw new InvalidDataException("è¾“å‡ºæ–‡ä»¶ä¸èƒ½è¦†ç›–è¾“å…¥æ–‡ä»¶ã€‚");
+                throw new InvalidDataException("Êä³öÎÄ¼ş²»ÄÜ¸²¸ÇÊäÈëÎÄ¼ş¡£");
             return (entries.Count, files);
         }, rewritesSourceTxt: fromTxt);
     }
@@ -291,7 +295,7 @@ public class MainForm : Form, IMessageFilter
         await RunConversion(() =>
         {
             var path = OutputPath(true);
-            if (!File.Exists(path)) throw new InvalidDataException($"TXT æ–‡ä»¶ä¸å­˜åœ¨ï¼š\n{path}\n\nè¯·æ£€æŸ¥ä¸Šæ–¹ç›®å½•å’Œ TXT æ–‡ä»¶åã€‚");
+            if (!File.Exists(path)) throw new InvalidDataException($"TXT ÎÄ¼ş²»´æÔÚ£º\n{path}\n\nÇë¼ì²éÉÏ·½Ä¿Â¼ºÍ TXT ÎÄ¼şÃû¡£");
             var entries = PhraseConverter.ReadTxt(path);
             return (entries.Count, new List<(string Path, byte[] Data)> { (path, PhraseConverter.EncodeTxt(entries)) });
         }, sortOnly: true);
@@ -306,21 +310,21 @@ public class MainForm : Form, IMessageFilter
             Enabled = false;
             UseWaitCursor = true;
             var result = await Task.Run(() => BatchPhraseAdder.Add(txtPath, datPath, input));
-            status.Text = $"å¤„ç†å®Œæˆï¼šæ–°å¢ {result.Added.Count} æ¡ï¼Œæ›¿æ¢ {result.Replaced.Count} æ¬¡ï¼Œæœªå˜åŒ– {result.Duplicates.Count} æ¡ã€‚";
+            status.Text = $"´¦ÀíÍê³É£ºĞÂÔö {result.Added.Count} Ìõ£¬Ìæ»» {result.Replaced.Count} ´Î£¬Î´±ä»¯ {result.Duplicates.Count} Ìõ¡£";
             string Format(PhraseEntry entry) => $"{entry.Pinyin},{entry.Position},{entry.Phrase}";
-            var details = status.Text + "\r\n" + (result.Added.Count == 0 && result.Replaced.Count == 0 ? "å†…å®¹å‡æœªå˜åŒ–ï¼Œæ–‡ä»¶æœªä¿®æ”¹ã€‚" : $"åˆå¹¶åå…± {result.Total} æ¡çŸ­è¯­ï¼ŒTXT å’Œ DAT å·²æŒ‰å‡åºä¿å­˜ã€‚") +
-                "\r\n\r\næˆåŠŸæ–°å¢ï¼ˆæœ€ç»ˆä¿å­˜å†…å®¹ï¼‰ï¼š\r\n" + (result.Added.Count == 0 ? "ï¼ˆæ— ï¼‰" : string.Join("\r\n", result.Added.Select(Format))) +
-                "\r\n\r\næ›¿æ¢è®°å½•ï¼ˆæŒ‰è¾“å…¥é¡ºåºï¼ŒåŒä¸€æ‹¼éŸ³ï¼‹ä½ç½®ä»¥æœ€åä¸€æ¡ä¸ºå‡†ï¼‰ï¼š\r\n" +
-                (result.Replaced.Count == 0 ? "ï¼ˆæ— ï¼‰" : string.Join("\r\n", result.Replaced.Select(x => $"ç¬¬ {x.Line} è¡Œï¼š{string.Join(" / ", x.Before.Select(Format))} â†’ {Format(x.Entry)}"))) +
-                "\r\n\r\næœªå˜åŒ–ï¼ˆæ‹¼éŸ³ã€ä½ç½®åŠæ–‡æœ¬å®Œå…¨ç›¸åŒï¼Œè·³è¿‡ï¼‰ï¼š\r\n" +
-                (result.Duplicates.Count == 0 ? "ï¼ˆæ— ï¼‰" : string.Join("\r\n", result.Duplicates.Select(x => $"ç¬¬ {x.Line} è¡Œï¼š{Format(x.Entry)}")));
+            var details = status.Text + "\r\n" + (result.Added.Count == 0 && result.Replaced.Count == 0 ? "ÄÚÈİ¾ùÎ´±ä»¯£¬ÎÄ¼şÎ´ĞŞ¸Ä¡£" : $"ºÏ²¢ºó¹² {result.Total} Ìõ¶ÌÓï£¬TXT ºÍ DAT ÒÑ°´ÉıĞò±£´æ¡£") +
+                "\r\n\r\n³É¹¦ĞÂÔö£¨×îÖÕ±£´æÄÚÈİ£©£º\r\n" + (result.Added.Count == 0 ? "£¨ÎŞ£©" : string.Join("\r\n", result.Added.Select(Format))) +
+                "\r\n\r\nÌæ»»¼ÇÂ¼£¨°´ÊäÈëË³Ğò£¬Í¬Ò»Æ´Òô£«Î»ÖÃÒÔ×îºóÒ»ÌõÎª×¼£©£º\r\n" +
+                (result.Replaced.Count == 0 ? "£¨ÎŞ£©" : string.Join("\r\n", result.Replaced.Select(x => $"µÚ {x.Line} ĞĞ£º{string.Join(" / ", x.Before.Select(Format))} ¡ú {Format(x.Entry)}"))) +
+                "\r\n\r\nÎ´±ä»¯£¨Æ´Òô¡¢Î»ÖÃ¼°ÎÄ±¾ÍêÈ«ÏàÍ¬£¬Ìø¹ı£©£º\r\n" +
+                (result.Duplicates.Count == 0 ? "£¨ÎŞ£©" : string.Join("\r\n", result.Duplicates.Select(x => $"µÚ {x.Line} ĞĞ£º{Format(x.Entry)}")));
             Enabled = true;
             UseWaitCursor = false;
-            using var dialog = new Form { Text = "æ·»åŠ å®Œæˆ", Font = Font, StartPosition = FormStartPosition.CenterParent,
+            using var dialog = new Form { Text = "Ìí¼ÓÍê³É", Font = Font, StartPosition = FormStartPosition.CenterParent,
                 Size = new Size(720, 500), MinimumSize = new Size(500, 320), MinimizeBox = false, MaximizeBox = false };
             var report = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false,
                 Dock = DockStyle.Fill, Text = details };
-            var close = new Button { Text = "ç¡®å®š", Dock = DockStyle.Bottom, Height = 42, DialogResult = DialogResult.OK };
+            var close = new Button { Text = "È·¶¨", Dock = DockStyle.Bottom, Height = 42, DialogResult = DialogResult.OK };
             dialog.Controls.Add(report);
             dialog.Controls.Add(close);
             dialog.AcceptButton = close;
@@ -330,8 +334,8 @@ public class MainForm : Form, IMessageFilter
         }
         catch (Exception ex)
         {
-            status.Text = "æ·»åŠ å¤±è´¥ï¼Œæœªå®Œæˆä¿å­˜ã€‚";
-            MessageBox.Show(this, ex.Message, "æ·»åŠ å¤±è´¥", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            status.Text = "Ìí¼ÓÊ§°Ü£¬Î´Íê³É±£´æ¡£";
+            MessageBox.Show(this, ex.Message, "Ìí¼ÓÊ§°Ü", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally { Enabled = true; UseWaitCursor = false; }
     }
@@ -342,28 +346,28 @@ public class MainForm : Form, IMessageFilter
             var result = prepare();
             var existing = result.Files.Where(x => File.Exists(x.Path)).Select(x => x.Path).ToArray();
             var confirmation = sortOnly
-                ? "å°†æŒ‰æ‹¼éŸ³ â†’ ä½ç½® â†’ è¾“å‡ºæ–‡æœ¬å‡åºæ’åºï¼Œå¹¶å†™å›åŸ TXTï¼š\n\n" + result.Files[0].Path +
-                  "\n\nç©ºè¡Œå’Œæ³¨é‡Šå°†è¢«ç§»é™¤ï¼Œä¿å­˜ä¸º UTF-8ã€‚\nä¸ä¼šç”Ÿæˆæˆ–ä¿®æ”¹ DATã€‚\n\næ˜¯å¦ç»§ç»­ï¼Ÿé€‰æ‹©â€œå¦â€ä¸ä¼šä¿®æ”¹ä»»ä½•æ–‡ä»¶ã€‚"
+                ? "½«°´Æ´Òô ¡ú Î»ÖÃ ¡ú Êä³öÎÄ±¾ÉıĞòÅÅĞò£¬²¢Ğ´»ØÔ­ TXT£º\n\n" + result.Files[0].Path +
+                  "\n\n¿ÕĞĞºÍ×¢ÊÍ½«±»ÒÆ³ı£¬±£´æÎª UTF-8¡£\n²»»áÉú³É»òĞŞ¸Ä DAT¡£\n\nÊÇ·ñ¼ÌĞø£¿Ñ¡Ôñ¡°·ñ¡±²»»áĞŞ¸ÄÈÎºÎÎÄ¼ş¡£"
                 : rewritesSourceTxt
-                ? "æœ¬æ¬¡ TXT â†’ DAT å°†æ‰§è¡Œä»¥ä¸‹æ“ä½œï¼š\n\n" +
-                  "1. åŸ TXT æŒ‰å‡åºæ’åºåå†™å›ï¼ˆä¸æ˜¯åªè¯»å–ï¼‰ï¼š\n" + result.Files[0].Path +
-                  "\nç©ºè¡Œå’Œæ³¨é‡Šå°†è¢«ç§»é™¤ï¼Œä¿å­˜ä¸º UTF-8ã€‚\n\n" +
-                  (File.Exists(result.Files[1].Path) ? "2. è¦†ç›–å·²æœ‰ DATï¼š\n" : "2. ç”Ÿæˆæ–° DATï¼š\n") + result.Files[1].Path +
-                  "\n\næ˜¯å¦ç»§ç»­ï¼Ÿé€‰æ‹©â€œå¦â€ä¸ä¼šä¿®æ”¹ä»»ä½•æ–‡ä»¶ã€‚"
-                : "ä»¥ä¸‹æ–‡ä»¶å·²å­˜åœ¨ï¼Œæ˜¯å¦è¦†ç›–ï¼Ÿ\n\n" + string.Join("\n", existing);
+                ? "±¾´Î TXT ¡ú DAT ½«Ö´ĞĞÒÔÏÂ²Ù×÷£º\n\n" +
+                  "1. Ô­ TXT °´ÉıĞòÅÅĞòºóĞ´»Ø£¨²»ÊÇÖ»¶ÁÈ¡£©£º\n" + result.Files[0].Path +
+                  "\n¿ÕĞĞºÍ×¢ÊÍ½«±»ÒÆ³ı£¬±£´æÎª UTF-8¡£\n\n" +
+                  (File.Exists(result.Files[1].Path) ? "2. ¸²¸ÇÒÑÓĞ DAT£º\n" : "2. Éú³ÉĞÂ DAT£º\n") + result.Files[1].Path +
+                  "\n\nÊÇ·ñ¼ÌĞø£¿Ñ¡Ôñ¡°·ñ¡±²»»áĞŞ¸ÄÈÎºÎÎÄ¼ş¡£"
+                : "ÒÔÏÂÎÄ¼şÒÑ´æÔÚ£¬ÊÇ·ñ¸²¸Ç£¿\n\n" + string.Join("\n", existing);
             if ((sortOnly || rewritesSourceTxt || existing.Length > 0) && MessageBox.Show(this, confirmation,
-                sortOnly ? "ç¡®è®¤ TXT æ’åº" : rewritesSourceTxt ? "ç¡®è®¤æ’åºå†™å›ä¸è½¬æ¢" : "ç¡®è®¤è¦†ç›–", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+                sortOnly ? "È·ÈÏ TXT ÅÅĞò" : rewritesSourceTxt ? "È·ÈÏÅÅĞòĞ´»ØÓë×ª»»" : "È·ÈÏ¸²¸Ç", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
             Enabled = false;
             UseWaitCursor = true;
-            status.Text = "æ­£åœ¨ä¿å­˜â€¦";
+            status.Text = "ÕıÔÚ±£´æ¡­";
             await Task.Run(() => OutputFiles.Save(result.Files));
-            status.Text = $"å·²å®Œæˆï¼š{result.Count} æ¡çŸ­è¯­ï¼Œå·²æŒ‰å‡åºä¿å­˜ã€‚" + (sortOnly ? "DAT æœªä¿®æ”¹ã€‚" : "");
-            MessageBox.Show(this, status.Text + "\n\n" + string.Join("\n", result.Files.Select(x => x.Path)), sortOnly ? "æ’åºå®Œæˆ" : "è½¬æ¢å®Œæˆ", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            status.Text = $"ÒÑÍê³É£º{result.Count} Ìõ¶ÌÓï£¬ÒÑ°´ÉıĞò±£´æ¡£" + (sortOnly ? "DAT Î´ĞŞ¸Ä¡£" : "");
+            MessageBox.Show(this, status.Text + "\n\n" + string.Join("\n", result.Files.Select(x => x.Path)), sortOnly ? "ÅÅĞòÍê³É" : "×ª»»Íê³É", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
-            status.Text = sortOnly ? "æ’åºå¤±è´¥ï¼Œè¯·æ£€æŸ¥ TXT æ–‡ä»¶ã€‚" : "è½¬æ¢å¤±è´¥ï¼Œè¯·æ£€æŸ¥æ–‡ä»¶æˆ–ç”Ÿæˆä½ç½®ã€‚";
-            MessageBox.Show(this, ex.Message, sortOnly ? "æ’åºå¤±è´¥" : "è½¬æ¢å¤±è´¥", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            status.Text = sortOnly ? "ÅÅĞòÊ§°Ü£¬Çë¼ì²é TXT ÎÄ¼ş¡£" : "×ª»»Ê§°Ü£¬Çë¼ì²éÎÄ¼ş»òÉú³ÉÎ»ÖÃ¡£";
+            MessageBox.Show(this, ex.Message, sortOnly ? "ÅÅĞòÊ§°Ü" : "×ª»»Ê§°Ü", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally { Enabled = true; UseWaitCursor = false; }
     }
