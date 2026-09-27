@@ -72,7 +72,7 @@ public class MainForm : Form, IMessageFilter
 
         // 普通界面固定为 12 pt
         Font = new Font(
-            SystemFonts.MessageBoxFont.FontFamily,
+            (SystemFonts.MessageBoxFont ?? SystemFonts.DefaultFont).FontFamily,
             12F,
             FontStyle.Regular,
             GraphicsUnit.Point);
@@ -192,8 +192,13 @@ public class MainForm : Form, IMessageFilter
             Button(
                 "定位文件",
                 () =>
+                {
+                    if (!string.IsNullOrEmpty(txtName.Text))
+                        Clipboard.SetText(txtName.Text);
+
                     LocateFile(
-                        () => OutputPath(true))));
+                        () => OutputPath(true));
+                }));
 
         AddRow(
             settings,
@@ -203,8 +208,13 @@ public class MainForm : Form, IMessageFilter
             Button(
                 "定位文件",
                 () =>
+                {
+                    if (!string.IsNullOrEmpty(datName.Text))
+                        Clipboard.SetText(datName.Text);
+
                     LocateFile(
-                        () => OutputPath(false))));
+                        () => OutputPath(false));
+                }));
 
         settings.SetColumnSpan(
             settings.GetControlFromPosition(2, 1)!,
