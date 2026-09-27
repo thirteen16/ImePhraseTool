@@ -7,5 +7,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>微软拼音短语工具</AssemblyName>
     <RootNamespace>ImePhraseTool</RootNamespace>
+    <ApplicationIcon>assets\app.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="assets\app.ico" LogicalName="ImePhraseTool.AppIcon" />
+  </ItemGroup>
 </Project>

@@ -1,1240 +1,370 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
 using System.Drawing;
+using System.Diagnostics;
 using System.Windows.Forms;
 
 namespace ImePhraseTool;
 
-public class MainForm : Form
+public class MainForm : Form, IMessageFilter
 {
-    private readonly TextBox txtToDatInput = new();
-    private readonly TextBox txtToDatOutput = new();
+    private readonly string settingsPath;
+    private readonly System.Windows.Forms.Timer settingsTimer = new() { Interval = 600 };
+    private bool applyingSettings;
+    private float fontSize = 12F;
+    private int wheelDelta;
+    private readonly Dictionary<float, Font> fonts = new();
+    private readonly TextBox outputFolder = new();
+    private readonly TextBox txtName = new() { Text = "IME_phrases.txt" };
+    private readonly TextBox datName = new() { Text = "UserDefinedPhrase.dat" };
+    private readonly TextBox quickPhrase = new() { PlaceholderText = "æ¯è¡Œä¸€æ¡ï¼Œä¾‹å¦‚ï¼šnihao,1,ä½ å¥½", Multiline = true,
+        AcceptsReturn = true, ScrollBars = ScrollBars.Vertical, WordWrap = false };
+    private readonly Label status = new() { Text = "", AutoSize = true, Dock = DockStyle.Fill,
+        ForeColor = Color.FromArgb(100, 116, 139), Visible = false };
 
-    private readonly TextBox datToTxtInput = new();
-    private readonly TextBox datToTxtOutput = new();
+    public MainForm() : this(UserSettings.DefaultPath) { }
 
-    private readonly TextBox quickTxtFile = new();
-    private readonly TextBox quickDatFile = new();
-    private readonly TextBox quickPhrase = new();
-
-    private const string DefaultDatName = "UserDefinedPhrase.dat";
-    private const string DefaultTxtName = "IME_phrases.txt";
-
-    public MainForm()
+    public MainForm(string settingsPath)
     {
-        Text = "Î¢ÈíÆ´Òô¶ÌÓï¹¤¾ß";
-        StartPosition = FormStartPosition.CenterScreen;
-
-        ClientSize = new Size(1100, 850);
-        MinimumSize = new Size(900, 760);
-
+        this.settingsPath = settingsPath;
+        SuspendLayout();
+        Text = "å¾®è½¯æ‹¼éŸ³çŸ­è¯­å·¥å…·";
+        SetFontSize(12F);
+        BackColor = Color.FromArgb(245, 247, 251);
+        ForeColor = Color.FromArgb(30, 41, 59);
+        AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
-
-        BuildUi();
-    }
-
-    private void BuildUi()
-    {
-        var main = new TableLayoutPanel
+        StartPosition = FormStartPosition.CenterScreen;
+        using (var iconStream = typeof(MainForm).Assembly.GetManifestResourceStream("ImePhraseTool.AppIcon"))
+            if (iconStream is not null) Icon = new Icon(iconStream);
+        Load += (_, _) =>
         {
-            Dock = DockStyle.Fill,
-            Padding = new Padding(16),
-            ColumnCount = 1,
-            RowCount = 4
+            var area = Screen.FromControl(this).WorkingArea;
+            MinimumSize = new Size(Math.Min((int)(area.Width * .9), Font.Height * 38),
+                Math.Min((int)(area.Height * .9), Font.Height * 22));
+            Size = new Size(Math.Max(MinimumSize.Width, (int)(area.Width * .55)),
+                Math.Max(MinimumSize.Height, (int)(area.Height * .52)));
         };
-
-        main.RowStyles.Add(new RowStyle(SizeType.Absolute, 55));
-        main.RowStyles.Add(new RowStyle(SizeType.Absolute, 215));
-        main.RowStyles.Add(new RowStyle(SizeType.Absolute, 215));
-        main.RowStyles.Add(new RowStyle(SizeType.Absolute, 215));
-
+        outputFolder.Text = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        var main = new TableLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, ColumnCount = 1, RowCount = 4, Padding = new Padding(12) };
+        main.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        foreach (int share in new[] { 46, 16, 38 }) main.RowStyles.Add(new RowStyle(SizeType.Percent, share));
+        main.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         Controls.Add(main);
-
-        var title = new Label
+        var settings = Table(3, true);
+        AddRow(settings, 0, "ç›®å½•", outputFolder, Button("é€‰æ‹©ç›®å½•", SelectFolder));
+        settings.Controls.Add(Button("æ¢å¤é»˜è®¤", ResetSettings), 3, 0);
+        AddRow(settings, 1, "TXT", txtName, Button("å®šä½æ–‡ä»¶", () => LocateFile(() => OutputPath(true))));
+        AddRow(settings, 2, "DAT", datName, Button("å®šä½æ–‡ä»¶", () => LocateFile(() => OutputPath(false))));
+        settings.SetColumnSpan(settings.GetControlFromPosition(2, 1)!, 2);
+        settings.SetColumnSpan(settings.GetControlFromPosition(2, 2)!, 2);
+        main.Controls.Add(Card(settings), 0, 0);
+        var conversions = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 1, Margin = new Padding(0, 6, 0, 6) };
+        for (int i = 0; i < 4; i++) conversions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+        conversions.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        conversions.Controls.Add(Button("TXT â†’ DAT", () => ConvertFile(true)), 0, 0);
+        conversions.Controls.Add(Button("DAT â†’ TXT", () => ConvertFile(false)), 1, 0);
+        conversions.Controls.Add(Button("ä»…æ’åº TXT", SortTxt), 2, 0);
+        conversions.Controls.Add(Button("å¯¼å…¥å¾®è½¯æ‹¼éŸ³", ImportPinyin, true), 3, 0);
+        main.Controls.Add(conversions, 0, 1);
+        var quick = Table(1);
+        var addButton = Button("æ·»åŠ ", QuickAdd, true);
+        AddRow(quick, 0, "çŸ­è¯­", quickPhrase, addButton);
+        addButton.Dock = DockStyle.None;
+        addButton.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+        quickPhrase.Dock = DockStyle.None;
+        quickPhrase.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+        Shown += (_, _) => addButton.Height = quickPhrase.Height = quickPhrase.Font.Height * 5 + 8;
+        DpiChanged += (_, _) => addButton.Height = quickPhrase.Height = quickPhrase.Font.Height * 5 + 8;
+        quickPhrase.FontChanged += (_, _) => addButton.Height = quickPhrase.Height = quickPhrase.Font.Height * 5 + 8;
+        main.Controls.Add(Card(quick), 0, 2);
+        main.Controls.Add(status, 0, 3);
+        status.TextChanged += (_, _) => status.Visible = status.Text.Length > 0;
+        ApplySettings(UserSettings.Load(settingsPath, out var warning));
+        if (warning is not null) status.Text = warning;
+        settingsTimer.Tick += (_, _) => SaveSettings();
+        foreach (var field in new[] { outputFolder, txtName, datName })
+            field.TextChanged += (_, _) =>
+            {
+                if (applyingSettings) return;
+                settingsTimer.Stop();
+                settingsTimer.Start();
+            };
+        FormClosing += (_, _) => SaveSettings();
+        if (!File.Exists(settingsPath)) SaveSettings();
+        ResumeLayout(true);
+        Application.AddMessageFilter(this);
+    }
+    public bool PreFilterMessage(ref Message message)
+    {
+        const int MouseWheel = 0x020A;
+        if (message.Msg != MouseWheel) return false;
+        if ((ModifierKeys & Keys.Control) == 0) { wheelDelta = 0; return false; }
+        if (!Enabled || Control.FromChildHandle(message.HWnd)?.FindForm() != this) return false;
+        wheelDelta += unchecked((short)((message.WParam.ToInt64() >> 16) & 0xffff));
+        int steps = wheelDelta / 120;
+        wheelDelta %= 120;
+        if (steps != 0)
         {
-            Text = "Î¢ÈíÆ´Òô×Ô¶¨Òå¶ÌÓï¹¤¾ß",
-            Dock = DockStyle.Fill,
-            AutoSize = false,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Font = new Font(
-                "Microsoft YaHei UI",
-                17F,
-                FontStyle.Bold),
-            AutoEllipsis = false
-        };
-
-        main.Controls.Add(title, 0, 0);
-
-        main.Controls.Add(
-            CreateTxtToDatGroup(),
-            0,
-            1);
-
-        main.Controls.Add(
-            CreateDatToTxtGroup(),
-            0,
-            2);
-
-        main.Controls.Add(
-            CreateQuickAddGroup(),
-            0,
-            3);
+            float next = Math.Clamp(fontSize + steps, 8F, 24F);
+            if (next != fontSize)
+            {
+                SetFontSize(next);
+                settingsTimer.Stop();
+                settingsTimer.Start();
+            }
+        }
+        return true; // Ctrl+wheel changes the font instead of scrolling the text.
     }
 
-    // ============================================================
-    // TXT ¡ú DAT
-    // ============================================================
-
-    private GroupBox CreateTxtToDatGroup()
+    private void SetFontSize(float size)
     {
-        var group = CreateGroupBox("TXT ¡ú DAT");
-        var table = CreateConversionTable();
-
-        // TXT ÎÄ¼ş
-        AddControl(
-            table,
-            CreateLabel("TXT ÎÄ¼ş£º"),
-            0, 0);
-
-        ConfigureTextBox(txtToDatInput);
-
-        AddControl(
-            table,
-            txtToDatInput,
-            1, 0);
-
-        AddControl(
-            table,
-            CreateButton("Ñ¡ÔñÎÄ¼ş", SelectTxtToDatInput),
-            2, 0);
-
-        AddControl(
-            table,
-            CreateButton("¿ªÊ¼×ª»»", ConvertTxtToDat),
-            3, 0);
-
-        // Êä³öÎ»ÖÃ
-        AddControl(
-            table,
-            CreateLabel("Êä³öÎ»ÖÃ£º"),
-            0, 1);
-
-        ConfigureTextBox(txtToDatOutput);
-
-        AddControl(
-            table,
-            txtToDatOutput,
-            1, 1);
-
-        AddControl(
-            table,
-            CreateButton("Ñ¡ÔñÎÄ¼ş", SelectTxtToDatOutputFile),
-            2, 1);
-
-        AddControl(
-            table,
-            CreateButton("Ñ¡ÔñÄ¿Â¼", SelectTxtToDatOutputFolder),
-            3, 1);
-
-        group.Controls.Add(table);
-
-        return group;
-    }
-
-    private void SelectTxtToDatInput()
-    {
-        using var dialog = new OpenFileDialog
+        fontSize = float.IsFinite(size) ? Math.Clamp(size, 8F, 24F) : 12F;
+        // WinForms may retain an equal Font or reference it during deferred layout.
+        // Keep cached fonts alive until all controls have been disposed.
+        if (!fonts.TryGetValue(fontSize, out var font))
         {
-            Title = "Ñ¡Ôñ TXT ÎÄ¼ş",
-            Filter = "TXT ÎÄ¼ş (*.txt)|*.txt|ËùÓĞÎÄ¼ş (*.*)|*.*",
-            CheckFileExists = true,
-            Multiselect = false
-        };
-
-        if (dialog.ShowDialog(this) == DialogResult.OK)
+            font = new Font((SystemFonts.MessageBoxFont ?? SystemFonts.DefaultFont).FontFamily,
+                fontSize, FontStyle.Regular, GraphicsUnit.Point);
+            fonts.Add(fontSize, font);
+        }
+        Font = font;
+        if (IsHandleCreated)
         {
-            txtToDatInput.Text = dialog.FileName;
+            var area = Screen.FromControl(this).WorkingArea;
+            MinimumSize = new Size(Math.Min((int)(area.Width * .9), Font.Height * 38),
+                Math.Min((int)(area.Height * .9), Font.Height * 22));
         }
     }
-
-    private void SelectTxtToDatOutputFile()
+    private void ApplySettings(UserSettings settings)
     {
-        using var dialog = new SaveFileDialog
+        applyingSettings = true;
+        try
         {
-            Title = "Ñ¡Ôñ DAT Êä³öÎÄ¼ş",
-            Filter = "DAT ÎÄ¼ş (*.dat)|*.dat|ËùÓĞÎÄ¼ş (*.*)|*.*",
-            DefaultExt = "dat",
-            AddExtension = true,
-            FileName = DefaultDatName,
-            OverwritePrompt = false
-        };
-
-        if (dialog.ShowDialog(this) == DialogResult.OK)
+            outputFolder.Text = settings.OutputFolder;
+            txtName.Text = settings.TxtName;
+            datName.Text = settings.DatName;
+            SetFontSize(settings.FontSize);
+        }
+        finally { applyingSettings = false; }
+    }
+    private bool SaveSettings()
+    {
+        settingsTimer.Stop();
+        try
         {
-            txtToDatOutput.Text = dialog.FileName;
+            new UserSettings { OutputFolder = outputFolder.Text, TxtName = txtName.Text, DatName = datName.Text, FontSize = fontSize }.Save(settingsPath);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            status.Text = "é…ç½®ä¿å­˜å¤±è´¥ï¼š" + ex.Message;
+            return false;
         }
     }
-
-    private void SelectTxtToDatOutputFolder()
+    private void ResetSettings()
     {
-        using var dialog = new FolderBrowserDialog
-        {
-            Description = "Ñ¡Ôñ DAT Êä³öÄ¿Â¼",
-            ShowNewFolderButton = true
-        };
-
-        if (dialog.ShowDialog(this) == DialogResult.OK)
-        {
-            txtToDatOutput.Text =
-                Path.Combine(
-                    dialog.SelectedPath,
-                    DefaultDatName);
-        }
+        ApplySettings(new UserSettings());
+        if (SaveSettings()) status.Text = "å·²æ¢å¤é»˜è®¤";
     }
-
-    private void ConvertTxtToDat()
+    private void LocateFile(Func<string> resolvePath)
     {
         try
         {
-            if (!File.Exists(txtToDatInput.Text))
+            var path = resolvePath();
+            if (File.Exists(path))
+                Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+            else
             {
-                ShowInfo("ÇëÏÈÑ¡ÔñÓĞĞ§µÄ TXT ÎÄ¼ş¡£");
-                return;
+                var directory = Path.GetDirectoryName(path)!;
+                Directory.CreateDirectory(directory);
+                Process.Start(new ProcessStartInfo(directory) { UseShellExecute = true });
+                status.Text = "æ–‡ä»¶å°šä¸å­˜åœ¨ï¼Œå·²æ‰“å¼€å¯¹åº”ç›®å½•ï¼š" + directory;
             }
-
-            if (string.IsNullOrWhiteSpace(txtToDatOutput.Text))
-            {
-                ShowInfo("ÇëÑ¡Ôñ DAT Êä³öÎÄ¼ş»òÊä³öÄ¿Â¼¡£");
-                return;
-            }
-
-            var entries = ReadTxt(txtToDatInput.Text);
-
-            entries.Sort(CompareEntries);
-
-            WriteTxt(
-                txtToDatInput.Text,
-                entries);
-
-            WriteDat(
-                txtToDatOutput.Text,
-                entries);
-
-            MessageBox.Show(
-                this,
-                $"×ª»»Íê³É¡£\n\n¹² {entries.Count} Ìõ¶ÌÓï¡£",
-                "Íê³É",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
-            ShowError(ex);
+            MessageBox.Show(this, ex.Message, "æ— æ³•å®šä½æ–‡ä»¶", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
-
-    // ============================================================
-    // DAT ¡ú TXT
-    // ============================================================
-
-    private GroupBox CreateDatToTxtGroup()
+    protected override void Dispose(bool disposing)
     {
-        var group = CreateGroupBox("DAT ¡ú TXT");
-        var table = CreateConversionTable();
-
-        AddControl(
-            table,
-            CreateLabel("DAT ÎÄ¼ş£º"),
-            0, 0);
-
-        ConfigureTextBox(datToTxtInput);
-
-        AddControl(
-            table,
-            datToTxtInput,
-            1, 0);
-
-        AddControl(
-            table,
-            CreateButton("Ñ¡ÔñÎÄ¼ş", SelectDatToTxtInput),
-            2, 0);
-
-        AddControl(
-            table,
-            CreateButton("¿ªÊ¼×ª»»", ConvertDatToTxt),
-            3, 0);
-
-        AddControl(
-            table,
-            CreateLabel("Êä³öÎ»ÖÃ£º"),
-            0, 1);
-
-        ConfigureTextBox(datToTxtOutput);
-
-        AddControl(
-            table,
-            datToTxtOutput,
-            1, 1);
-
-        AddControl(
-            table,
-            CreateButton("Ñ¡ÔñÎÄ¼ş", SelectDatToTxtOutputFile),
-            2, 1);
-
-        AddControl(
-            table,
-            CreateButton("Ñ¡ÔñÄ¿Â¼", SelectDatToTxtOutputFolder),
-            3, 1);
-
-        group.Controls.Add(table);
-
+        if (disposing)
+        {
+            Application.RemoveMessageFilter(this);
+            settingsTimer.Dispose();
+        }
+        base.Dispose(disposing);
+        if (disposing) { foreach (var font in fonts.Values) font.Dispose(); fonts.Clear(); }
+    }
+    private static TableLayoutPanel Table(int rows, bool extraAction = false)
+    {
+        var table = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = extraAction ? 4 : 3, RowCount = rows };
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 9));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, extraAction ? 59 : 70));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, extraAction ? 16 : 21));
+        if (extraAction) table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 16));
+        for (int i = 0; i < rows; i++) table.RowStyles.Add(new RowStyle(SizeType.Percent, 100F / rows));
+        return table;
+    }
+    private Control Card(Control content)
+    {
+        var group = new Panel { BackColor = Color.White, Dock = DockStyle.Fill,
+            Padding = new Padding(8), Margin = new Padding(0, 6, 0, 6) };
+        group.Controls.Add(content);
         return group;
     }
-
-    private void SelectDatToTxtInput()
+    private static Button Button(string text, Action action, bool primary = false)
     {
-        using var dialog = new OpenFileDialog
-        {
-            Title = "Ñ¡Ôñ DAT ÎÄ¼ş",
-            Filter = "DAT ÎÄ¼ş (*.dat)|*.dat|ËùÓĞÎÄ¼ş (*.*)|*.*",
-            CheckFileExists = true,
-            Multiselect = false
-        };
-
-        if (dialog.ShowDialog(this) == DialogResult.OK)
-        {
-            datToTxtInput.Text = dialog.FileName;
-        }
-    }
-
-    private void SelectDatToTxtOutputFile()
-    {
-        using var dialog = new SaveFileDialog
-        {
-            Title = "Ñ¡Ôñ TXT Êä³öÎÄ¼ş",
-            Filter = "TXT ÎÄ¼ş (*.txt)|*.txt|ËùÓĞÎÄ¼ş (*.*)|*.*",
-            DefaultExt = "txt",
-            AddExtension = true,
-            FileName = DefaultTxtName,
-            OverwritePrompt = false
-        };
-
-        if (dialog.ShowDialog(this) == DialogResult.OK)
-        {
-            datToTxtOutput.Text = dialog.FileName;
-        }
-    }
-
-    private void SelectDatToTxtOutputFolder()
-    {
-        using var dialog = new FolderBrowserDialog
-        {
-            Description = "Ñ¡Ôñ TXT Êä³öÄ¿Â¼",
-            ShowNewFolderButton = true
-        };
-
-        if (dialog.ShowDialog(this) == DialogResult.OK)
-        {
-            datToTxtOutput.Text =
-                Path.Combine(
-                    dialog.SelectedPath,
-                    DefaultTxtName);
-        }
-    }
-
-    private void ConvertDatToTxt()
-    {
-        try
-        {
-            if (!File.Exists(datToTxtInput.Text))
-            {
-                ShowInfo("ÇëÏÈÑ¡ÔñÓĞĞ§µÄ DAT ÎÄ¼ş¡£");
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(datToTxtOutput.Text))
-            {
-                ShowInfo("ÇëÑ¡Ôñ TXT Êä³öÎÄ¼ş»òÊä³öÄ¿Â¼¡£");
-                return;
-            }
-
-            var entries = ReadDat(datToTxtInput.Text);
-
-            entries.Sort(CompareEntries);
-
-            WriteTxt(
-                datToTxtOutput.Text,
-                entries);
-
-            MessageBox.Show(
-                this,
-                $"×ª»»Íê³É¡£\n\n¹² {entries.Count} Ìõ¶ÌÓï¡£",
-                "Íê³É",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-        }
-        catch (Exception ex)
-        {
-            ShowError(ex);
-        }
-    }
-
-    // ============================================================
-    // ¿ìËÙÌí¼Ó
-    // ============================================================
-
-    private GroupBox CreateQuickAddGroup()
-    {
-        var group = CreateGroupBox("¿ìËÙÌí¼Ó");
-        var table = CreateQuickTable();
-
-        AddControl(
-            table,
-            CreateLabel("TXT ÎÄ¼ş£º"),
-            0, 0);
-
-        ConfigureTextBox(quickTxtFile);
-
-        AddControl(
-            table,
-            quickTxtFile,
-            1, 0);
-
-        AddControl(
-            table,
-            CreateButton("Ñ¡ÔñÎÄ¼ş", SelectQuickTxtFile),
-            2, 0);
-
-        AddControl(
-            table,
-            CreateLabel("DAT ÎÄ¼ş£º"),
-            0, 1);
-
-        ConfigureTextBox(quickDatFile);
-
-        AddControl(
-            table,
-            quickDatFile,
-            1, 1);
-
-        AddControl(
-            table,
-            CreateButton("Ñ¡ÔñÎÄ¼ş", SelectQuickDatFile),
-            2, 1);
-
-        AddControl(
-            table,
-            CreateLabel("¶ÌÓï£º"),
-            0, 2);
-
-        ConfigureTextBox(quickPhrase);
-
-        quickPhrase.PlaceholderText =
-            "Æ´Òô£¬Î»ÖÃ£¨´ÊÆµ£©£¬Êä³öÎÄ±¾";
-
-        AddControl(
-            table,
-            quickPhrase,
-            1, 2);
-
-        AddControl(
-            table,
-            CreateButton("Ìí¼Ó", QuickAdd),
-            2, 2);
-
-        group.Controls.Add(table);
-
-        return group;
-    }
-
-    private void SelectQuickTxtFile()
-    {
-        using var dialog = new OpenFileDialog
-        {
-            Title = "Ñ¡Ôñ TXT ÎÄ¼ş",
-            Filter = "TXT ÎÄ¼ş (*.txt)|*.txt|ËùÓĞÎÄ¼ş (*.*)|*.*",
-            CheckFileExists = true,
-            Multiselect = false
-        };
-
-        if (dialog.ShowDialog(this) == DialogResult.OK)
-        {
-            quickTxtFile.Text = dialog.FileName;
-        }
-    }
-
-    private void SelectQuickDatFile()
-    {
-        using var dialog = new OpenFileDialog
-        {
-            Title = "Ñ¡Ôñ DAT ÎÄ¼ş",
-            Filter = "DAT ÎÄ¼ş (*.dat)|*.dat|ËùÓĞÎÄ¼ş (*.*)|*.*",
-            CheckFileExists = true,
-            Multiselect = false
-        };
-
-        if (dialog.ShowDialog(this) == DialogResult.OK)
-        {
-            quickDatFile.Text = dialog.FileName;
-        }
-    }
-
-    private void QuickAdd()
-    {
-        try
-        {
-            if (!File.Exists(quickTxtFile.Text))
-            {
-                ShowInfo("ÇëÏÈÑ¡ÔñÓĞĞ§µÄ TXT ÎÄ¼ş¡£");
-                return;
-            }
-
-            if (!File.Exists(quickDatFile.Text))
-            {
-                ShowInfo("ÇëÏÈÑ¡ÔñÓĞĞ§µÄ DAT ÎÄ¼ş¡£");
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(quickPhrase.Text))
-            {
-                ShowInfo(
-                    "ÇëÊäÈë¶ÌÓï£¬ÀıÈç£º\n\napi,1,api");
-                return;
-            }
-
-            var newEntry =
-                ParseEntry(quickPhrase.Text);
-
-            var entries =
-                ReadTxt(quickTxtFile.Text);
-
-            entries.Add(newEntry);
-
-            entries.Sort(CompareEntries);
-
-            WriteTxt(
-                quickTxtFile.Text,
-                entries);
-
-            WriteDat(
-                quickDatFile.Text,
-                entries);
-
-            quickPhrase.Clear();
-
-            MessageBox.Show(
-                this,
-                $"Ìí¼ÓÍê³É¡£\n\nµ±Ç°¹²ÓĞ {entries.Count} Ìõ¶ÌÓï¡£",
-                "Íê³É",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-        }
-        catch (Exception ex)
-        {
-            ShowError(ex);
-        }
-    }
-
-    // ============================================================
-    // UI ²¼¾Ö
-    // ============================================================
-
-    private static GroupBox CreateGroupBox(string text)
-    {
-        return new GroupBox
-        {
-            Text = text,
-            Dock = DockStyle.Fill,
-            Padding = new Padding(14),
-            Font = new Font(
-                "Microsoft YaHei UI",
-                9F,
-                FontStyle.Regular)
-        };
-    }
-
-    private static Label CreateLabel(string text)
-    {
-        return new Label
-        {
-            Text = text,
-            Dock = DockStyle.Fill,
-            AutoSize = false,
-            TextAlign = ContentAlignment.MiddleLeft,
-            AutoEllipsis = false,
-            UseCompatibleTextRendering = false,
-            Margin = new Padding(0, 4, 8, 4)
-        };
-    }
-
-    private static Button CreateButton(
-        string text,
-        Action action)
-    {
-        var button = new Button
-        {
-            Text = text,
-
-            // ¹Ø¼ü£º
-            // ²»ÔÊĞí°´Å¥¸ù¾İÎÄ×ÖÖØĞÂ¼ÆËã³ß´ç
-            AutoSize = false,
-
-            // ²»ÔÊĞí°´Å¥ÎÄ×ÖÒòÎª³ß´ç²»×ã¶ø²úÉúÆæ¹Ö²¼¾Ö
-            UseCompatibleTextRendering = false,
-
-            Dock = DockStyle.Fill,
-
-            Margin = new Padding(5, 4, 5, 4),
-
-            MinimumSize = new Size(110, 36),
-
-            TextAlign = ContentAlignment.MiddleCenter,
-
-            Padding = new Padding(0),
-
-            TabStop = true
-        };
-
+        var button = new Button { Text = text, Dock = DockStyle.Fill, Margin = new Padding(4), AutoSize = false,
+            FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand,
+            BackColor = primary ? Color.FromArgb(37, 99, 235) : Color.White,
+            ForeColor = primary ? Color.White : Color.FromArgb(51, 65, 85) };
+        button.FlatAppearance.BorderColor = Color.FromArgb(218, 225, 235);
+        button.FlatAppearance.BorderSize = primary ? 0 : 1;
+        button.FlatAppearance.MouseOverBackColor = primary ? Color.FromArgb(29, 78, 216) : Color.FromArgb(239, 246, 255);
         button.Click += (_, _) => action();
-
         return button;
     }
-
-    private static void ConfigureTextBox(TextBox textBox)
+    private static void AddRow(TableLayoutPanel table, int row, string label, TextBox field, Button? button = null)
     {
-        textBox.Dock = DockStyle.Fill;
-        textBox.AutoSize = false;
-
-        textBox.Margin =
-            new Padding(5, 5, 5, 5);
-
-        textBox.Font =
-            new Font(
-                "Microsoft YaHei UI",
-                10F);
-
-        textBox.Height = 36;
+        table.Controls.Add(new Label { Text = label, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, row);
+        field.Dock = DockStyle.None;
+        field.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+        field.BackColor = Color.White;
+        field.ForeColor = Color.FromArgb(30, 41, 59);
+        field.Margin = new Padding(4, 8, 4, 4);
+        table.Controls.Add(field, 1, row);
+        if (button is not null) table.Controls.Add(button, 2, row);
     }
-
-    private static TableLayoutPanel CreateConversionTable()
+    private void SelectFolder()
     {
-        var table = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-
-            ColumnCount = 4,
-            RowCount = 2,
-
-            Margin = new Padding(0),
-            Padding = new Padding(0),
-
-            GrowStyle = TableLayoutPanelGrowStyle.FixedSize
-        };
-
-        // ±êÇ©
-        table.ColumnStyles.Add(
-            new ColumnStyle(
-                SizeType.Absolute,
-                140));
-
-        // ÊäÈë¿ò
-        table.ColumnStyles.Add(
-            new ColumnStyle(
-                SizeType.Percent,
-                100));
-
-        // Ñ¡ÔñÎÄ¼ş
-        table.ColumnStyles.Add(
-            new ColumnStyle(
-                SizeType.Absolute,
-                120));
-
-        // Ñ¡ÔñÄ¿Â¼ / ¿ªÊ¼×ª»»
-        table.ColumnStyles.Add(
-            new ColumnStyle(
-                SizeType.Absolute,
-                120));
-
-        table.RowStyles.Add(
-            new RowStyle(
-                SizeType.Absolute,
-                65));
-
-        table.RowStyles.Add(
-            new RowStyle(
-                SizeType.Absolute,
-                65));
-
-        return table;
+        using var dialog = new FolderBrowserDialog { SelectedPath = outputFolder.Text, Description = "é€‰æ‹©ç”Ÿæˆç›®å½•", UseDescriptionForTitle = true };
+        if (dialog.ShowDialog(this) == DialogResult.OK) outputFolder.Text = dialog.SelectedPath;
     }
-
-    private static TableLayoutPanel CreateQuickTable()
+    private string OutputPath(bool txt)
     {
-        var table = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-
-            ColumnCount = 3,
-            RowCount = 3,
-
-            Margin = new Padding(0),
-            Padding = new Padding(0),
-
-            GrowStyle = TableLayoutPanelGrowStyle.FixedSize
-        };
-
-        table.ColumnStyles.Add(
-            new ColumnStyle(
-                SizeType.Absolute,
-                140));
-
-        table.ColumnStyles.Add(
-            new ColumnStyle(
-                SizeType.Percent,
-                100));
-
-        table.ColumnStyles.Add(
-            new ColumnStyle(
-                SizeType.Absolute,
-                120));
-
-        table.RowStyles.Add(
-            new RowStyle(
-                SizeType.Absolute,
-                55));
-
-        table.RowStyles.Add(
-            new RowStyle(
-                SizeType.Absolute,
-                55));
-
-        table.RowStyles.Add(
-            new RowStyle(
-                SizeType.Absolute,
-                55));
-
-        return table;
+        string folder = outputFolder.Text.Trim();
+        if (folder.Length == 0) folder = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        if (!Path.IsPathFullyQualified(folder)) throw new InvalidDataException("ç”Ÿæˆç›®å½•å¿…é¡»æ˜¯å®Œæ•´è·¯å¾„ï¼Œè¯·ä½¿ç”¨â€œé€‰æ‹©ç›®å½•â€ã€‚");
+        var name = (txt ? txtName.Text : datName.Text).Trim();
+        if (name.Length == 0) name = txt ? "IME_phrases.txt" : "UserDefinedPhrase.dat";
+        string extension = txt ? ".txt" : ".dat";
+        if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name.EndsWith('.') ||
+            !string.Equals(Path.GetExtension(name), extension, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"æ–‡ä»¶åé¡»ä¸ºæœ‰æ•ˆçš„ {extension} æ–‡ä»¶åï¼Œä¸èƒ½åŒ…å«ç›®å½•ã€‚");
+        return Path.GetFullPath(Path.Combine(folder, name));
     }
-
-    private static void AddControl(
-        TableLayoutPanel table,
-        Control control,
-        int column,
-        int row)
+    private void ImportPinyin()
     {
-        table.Controls.Add(
-            control,
-            column,
-            row);
+        try
+        {
+            var folder = outputFolder.Text.Trim();
+            if (folder.Length == 0) folder = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            if (!Path.IsPathFullyQualified(folder))
+                throw new InvalidDataException("ç›®å½•å¿…é¡»æ˜¯å®Œæ•´è·¯å¾„ï¼Œè¯·ä½¿ç”¨â€œé€‰æ‹©ç›®å½•â€ã€‚");
+            Clipboard.SetText(Path.GetFullPath(folder));
+            status.Text = "ç›®å½•è·¯å¾„å·²å¤åˆ¶ã€‚";
+            Process.Start(new ProcessStartInfo("ms-settings:regionlanguage-chsime-pinyin-udp") { UseShellExecute = true });
+            status.Text = "ç›®å½•è·¯å¾„å·²å¤åˆ¶ï¼Œè¯·åœ¨ç³»ç»Ÿé¡µé¢ç‚¹å‡»â€œå¯¼å…¥â€å¹¶é€‰æ‹© DAT æ–‡ä»¶ã€‚";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "æ— æ³•å¤åˆ¶ç›®å½•æˆ–æ‰“å¼€è®¾ç½®", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
-
-    private void ShowInfo(string message)
+    private async void ConvertFile(bool fromTxt)
     {
-        MessageBox.Show(
-            this,
-            message,
-            "ÌáÊ¾",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Information);
+        await RunConversion(() =>
+        {
+            var input = OutputPath(fromTxt);
+            if (!File.Exists(input)) throw new InvalidDataException($"è¾“å…¥æ–‡ä»¶ä¸å­˜åœ¨ï¼š\n{input}\n\nè¯·æ£€æŸ¥ä¸Šæ–¹ç›®å½•å’Œæ–‡ä»¶åï¼Œæˆ–å°†æºæ–‡ä»¶æ”¾å…¥è¯¥ç›®å½•ã€‚");
+            var entries = fromTxt ? PhraseConverter.ReadTxt(input) : PhraseConverter.ReadDat(input);
+            var files = new List<(string Path, byte[] Data)> { (OutputPath(true), PhraseConverter.EncodeTxt(entries)) };
+            if (fromTxt) files.Add((OutputPath(false), PhraseConverter.EncodeDat(entries)));
+            if (files.Any(x => string.Equals(x.Path, Path.GetFullPath(input), StringComparison.OrdinalIgnoreCase) &&
+                !(fromTxt && x.Path == files[0].Path)))
+                throw new InvalidDataException("è¾“å‡ºæ–‡ä»¶ä¸èƒ½è¦†ç›–è¾“å…¥æ–‡ä»¶ã€‚");
+            return (entries.Count, files);
+        }, rewritesSourceTxt: fromTxt);
     }
-
-    private void ShowError(Exception ex)
+    private async void SortTxt()
     {
-        MessageBox.Show(
-            this,
-            $"²Ù×÷Ê§°Ü£º\n\n{ex.Message}",
-            "´íÎó",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Error);
+        await RunConversion(() =>
+        {
+            var path = OutputPath(true);
+            if (!File.Exists(path)) throw new InvalidDataException($"TXT æ–‡ä»¶ä¸å­˜åœ¨ï¼š\n{path}\n\nè¯·æ£€æŸ¥ä¸Šæ–¹ç›®å½•å’Œ TXT æ–‡ä»¶åã€‚");
+            var entries = PhraseConverter.ReadTxt(path);
+            return (entries.Count, new List<(string Path, byte[] Data)> { (path, PhraseConverter.EncodeTxt(entries)) });
+        }, sortOnly: true);
     }
-
-    // ============================================================
-    // TXT
-    // ============================================================
-
-    private static List<PhraseEntry> ReadTxt(string file)
+    private async void QuickAdd()
     {
-        var result =
-            new List<PhraseEntry>();
-
-        foreach (var rawLine in File.ReadAllLines(
-                     file,
-                     new UTF8Encoding(false)))
+        try
         {
-            var line = rawLine.Trim();
-
-            if (string.IsNullOrWhiteSpace(line))
-                continue;
-
-            if (line.StartsWith("#"))
-                continue;
-
-            result.Add(ParseEntry(line));
+            var txtPath = OutputPath(true);
+            var datPath = OutputPath(false);
+            var input = quickPhrase.Text;
+            Enabled = false;
+            UseWaitCursor = true;
+            var result = await Task.Run(() => BatchPhraseAdder.Add(txtPath, datPath, input));
+            status.Text = $"å¤„ç†å®Œæˆï¼šæ–°å¢ {result.Added.Count} æ¡ï¼Œæ›¿æ¢ {result.Replaced.Count} æ¬¡ï¼Œæœªå˜åŒ– {result.Duplicates.Count} æ¡ã€‚";
+            string Format(PhraseEntry entry) => $"{entry.Pinyin},{entry.Position},{entry.Phrase}";
+            var details = status.Text + "\r\n" + (result.Added.Count == 0 && result.Replaced.Count == 0 ? "å†…å®¹å‡æœªå˜åŒ–ï¼Œæ–‡ä»¶æœªä¿®æ”¹ã€‚" : $"åˆå¹¶åå…± {result.Total} æ¡çŸ­è¯­ï¼ŒTXT å’Œ DAT å·²æŒ‰å‡åºä¿å­˜ã€‚") +
+                "\r\n\r\næˆåŠŸæ–°å¢ï¼ˆæœ€ç»ˆä¿å­˜å†…å®¹ï¼‰ï¼š\r\n" + (result.Added.Count == 0 ? "ï¼ˆæ— ï¼‰" : string.Join("\r\n", result.Added.Select(Format))) +
+                "\r\n\r\næ›¿æ¢è®°å½•ï¼ˆæŒ‰è¾“å…¥é¡ºåºï¼ŒåŒä¸€æ‹¼éŸ³ï¼‹ä½ç½®ä»¥æœ€åä¸€æ¡ä¸ºå‡†ï¼‰ï¼š\r\n" +
+                (result.Replaced.Count == 0 ? "ï¼ˆæ— ï¼‰" : string.Join("\r\n", result.Replaced.Select(x => $"ç¬¬ {x.Line} è¡Œï¼š{string.Join(" / ", x.Before.Select(Format))} â†’ {Format(x.Entry)}"))) +
+                "\r\n\r\næœªå˜åŒ–ï¼ˆæ‹¼éŸ³ã€ä½ç½®åŠæ–‡æœ¬å®Œå…¨ç›¸åŒï¼Œè·³è¿‡ï¼‰ï¼š\r\n" +
+                (result.Duplicates.Count == 0 ? "ï¼ˆæ— ï¼‰" : string.Join("\r\n", result.Duplicates.Select(x => $"ç¬¬ {x.Line} è¡Œï¼š{Format(x.Entry)}")));
+            Enabled = true;
+            UseWaitCursor = false;
+            using var dialog = new Form { Text = "æ·»åŠ å®Œæˆ", Font = Font, StartPosition = FormStartPosition.CenterParent,
+                Size = new Size(720, 500), MinimumSize = new Size(500, 320), MinimizeBox = false, MaximizeBox = false };
+            var report = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false,
+                Dock = DockStyle.Fill, Text = details };
+            var close = new Button { Text = "ç¡®å®š", Dock = DockStyle.Bottom, Height = 42, DialogResult = DialogResult.OK };
+            dialog.Controls.Add(report);
+            dialog.Controls.Add(close);
+            dialog.AcceptButton = close;
+            dialog.CancelButton = close;
+            report.Select(0, 0);
+            dialog.ShowDialog(this);
         }
-
-        return result;
+        catch (Exception ex)
+        {
+            status.Text = "æ·»åŠ å¤±è´¥ï¼Œæœªå®Œæˆä¿å­˜ã€‚";
+            MessageBox.Show(this, ex.Message, "æ·»åŠ å¤±è´¥", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally { Enabled = true; UseWaitCursor = false; }
     }
-
-    private static PhraseEntry ParseEntry(string line)
+    private async Task RunConversion(Func<(int Count, List<(string Path, byte[] Data)> Files)> prepare, bool rewritesSourceTxt = false, bool sortOnly = false)
     {
-        var parts =
-            line.Split(',', 3);
-
-        if (parts.Length != 3)
+        try
         {
-            throw new InvalidDataException(
-                $"TXT ĞĞ¸ñÊ½´íÎó£º\n\n{line}\n\n" +
-                "ÕıÈ·¸ñÊ½£ºÆ´Òô,Î»ÖÃ£¨´ÊÆµ£©,Êä³öÎÄ±¾");
+            var result = prepare();
+            var existing = result.Files.Where(x => File.Exists(x.Path)).Select(x => x.Path).ToArray();
+            var confirmation = sortOnly
+                ? "å°†æŒ‰æ‹¼éŸ³ â†’ ä½ç½® â†’ è¾“å‡ºæ–‡æœ¬å‡åºæ’åºï¼Œå¹¶å†™å›åŸ TXTï¼š\n\n" + result.Files[0].Path +
+                  "\n\nç©ºè¡Œå’Œæ³¨é‡Šå°†è¢«ç§»é™¤ï¼Œä¿å­˜ä¸º UTF-8ã€‚\nä¸ä¼šç”Ÿæˆæˆ–ä¿®æ”¹ DATã€‚\n\næ˜¯å¦ç»§ç»­ï¼Ÿé€‰æ‹©â€œå¦â€ä¸ä¼šä¿®æ”¹ä»»ä½•æ–‡ä»¶ã€‚"
+                : rewritesSourceTxt
+                ? "æœ¬æ¬¡ TXT â†’ DAT å°†æ‰§è¡Œä»¥ä¸‹æ“ä½œï¼š\n\n" +
+                  "1. åŸ TXT æŒ‰å‡åºæ’åºåå†™å›ï¼ˆä¸æ˜¯åªè¯»å–ï¼‰ï¼š\n" + result.Files[0].Path +
+                  "\nç©ºè¡Œå’Œæ³¨é‡Šå°†è¢«ç§»é™¤ï¼Œä¿å­˜ä¸º UTF-8ã€‚\n\n" +
+                  (File.Exists(result.Files[1].Path) ? "2. è¦†ç›–å·²æœ‰ DATï¼š\n" : "2. ç”Ÿæˆæ–° DATï¼š\n") + result.Files[1].Path +
+                  "\n\næ˜¯å¦ç»§ç»­ï¼Ÿé€‰æ‹©â€œå¦â€ä¸ä¼šä¿®æ”¹ä»»ä½•æ–‡ä»¶ã€‚"
+                : "ä»¥ä¸‹æ–‡ä»¶å·²å­˜åœ¨ï¼Œæ˜¯å¦è¦†ç›–ï¼Ÿ\n\n" + string.Join("\n", existing);
+            if ((sortOnly || rewritesSourceTxt || existing.Length > 0) && MessageBox.Show(this, confirmation,
+                sortOnly ? "ç¡®è®¤ TXT æ’åº" : rewritesSourceTxt ? "ç¡®è®¤æ’åºå†™å›ä¸è½¬æ¢" : "ç¡®è®¤è¦†ç›–", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+            Enabled = false;
+            UseWaitCursor = true;
+            status.Text = "æ­£åœ¨ä¿å­˜â€¦";
+            await Task.Run(() => OutputFiles.Save(result.Files));
+            status.Text = $"å·²å®Œæˆï¼š{result.Count} æ¡çŸ­è¯­ï¼Œå·²æŒ‰å‡åºä¿å­˜ã€‚" + (sortOnly ? "DAT æœªä¿®æ”¹ã€‚" : "");
+            MessageBox.Show(this, status.Text + "\n\n" + string.Join("\n", result.Files.Select(x => x.Path)), sortOnly ? "æ’åºå®Œæˆ" : "è½¬æ¢å®Œæˆ", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
-
-        var pinyin =
-            parts[0].Trim();
-
-        var positionText =
-            parts[1].Trim();
-
-        var phrase =
-            parts[2];
-
-        if (string.IsNullOrWhiteSpace(pinyin))
+        catch (Exception ex)
         {
-            throw new InvalidDataException(
-                $"Æ´Òô²»ÄÜÎª¿Õ£º\n\n{line}");
+            status.Text = sortOnly ? "æ’åºå¤±è´¥ï¼Œè¯·æ£€æŸ¥ TXT æ–‡ä»¶ã€‚" : "è½¬æ¢å¤±è´¥ï¼Œè¯·æ£€æŸ¥æ–‡ä»¶æˆ–ç”Ÿæˆä½ç½®ã€‚";
+            MessageBox.Show(this, ex.Message, sortOnly ? "æ’åºå¤±è´¥" : "è½¬æ¢å¤±è´¥", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
-
-        if (!byte.TryParse(
-                positionText,
-                out var position))
-        {
-            throw new InvalidDataException(
-                $"Î»ÖÃ£¨´ÊÆµ£©±ØĞëÊÇ 0¡«255 µÄÊı×Ö£º\n\n{line}");
-        }
-
-        return new PhraseEntry(
-            pinyin,
-            position,
-            phrase);
-    }
-
-    private static void WriteTxt(
-        string file,
-        IEnumerable<PhraseEntry> entries)
-    {
-        var directory =
-            Path.GetDirectoryName(file);
-
-        if (!string.IsNullOrEmpty(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        var lines =
-            entries.Select(
-                x =>
-                    $"{x.Pinyin},{x.Position},{x.Phrase}");
-
-        File.WriteAllLines(
-            file,
-            lines,
-            new UTF8Encoding(false));
-    }
-
-    private static int CompareEntries(
-        PhraseEntry? x,
-        PhraseEntry? y)
-    {
-        if (ReferenceEquals(x, y))
-            return 0;
-
-        if (x is null)
-            return -1;
-
-        if (y is null)
-            return 1;
-
-        var result =
-            string.Compare(
-                x.Pinyin,
-                y.Pinyin,
-                StringComparison.Ordinal);
-
-        if (result != 0)
-            return result;
-
-        result =
-            x.Position.CompareTo(
-                y.Position);
-
-        if (result != 0)
-            return result;
-
-        return string.Compare(
-            x.Phrase,
-            y.Phrase,
-            StringComparison.Ordinal);
-    }
-
-    // ============================================================
-    // DAT
-    // ============================================================
-
-    private static List<PhraseEntry> ReadDat(string file)
-    {
-        var data =
-            File.ReadAllBytes(file);
-
-        if (data.Length < 0x40)
-        {
-            throw new InvalidDataException(
-                "DAT ÎÄ¼şÌ«Ğ¡£¬ÎŞ·¨Ê¶±ğ¡£");
-        }
-
-        var magic =
-            Encoding.ASCII.GetString(
-                data,
-                0,
-                8);
-
-        if (magic != "mschxudp")
-        {
-            throw new InvalidDataException(
-                "²»ÊÇÓĞĞ§µÄÎ¢ÈíÆ´Òô UserDefinedPhrase.dat ÎÄ¼ş¡£");
-        }
-
-        var offsetTableStart =
-            ReadInt32(data, 0x10);
-
-        var phraseStart =
-            ReadInt32(data, 0x14);
-
-        var count =
-            ReadInt32(data, 0x1C);
-
-        if (offsetTableStart < 0 ||
-            phraseStart < 0 ||
-            count < 0)
-        {
-            throw new InvalidDataException(
-                "DAT ÎÄ¼şÍ·ÖĞµÄÊı¾İÎŞĞ§¡£");
-        }
-
-        if (offsetTableStart >= data.Length ||
-            phraseStart >= data.Length)
-        {
-            throw new InvalidDataException(
-                "DAT ÎÄ¼ş½á¹¹Ëğ»µ¡£");
-        }
-
-        var result =
-            new List<PhraseEntry>(count);
-
-        for (var i = 0; i < count; i++)
-        {
-            var offsetPosition =
-                offsetTableStart + i * 4;
-
-            if (offsetPosition + 4 >
-                data.Length)
-            {
-                throw new InvalidDataException(
-                    "DAT ÎÄ¼şµÄÆ«ÒÆ±í³¬³öÎÄ¼ş·¶Î§¡£");
-            }
-
-            var relativeOffset =
-                ReadInt32(
-                    data,
-                    offsetPosition);
-
-            var entryPosition =
-                phraseStart + relativeOffset;
-
-            if (entryPosition < phraseStart ||
-                entryPosition + 0x10 >
-                data.Length)
-            {
-                throw new InvalidDataException(
-                    "DAT ÎÄ¼şÖĞµÄÌõÄ¿Î»ÖÃÎŞĞ§¡£");
-            }
-
-            var entryMagic =
-                ReadUInt32(
-                    data,
-                    entryPosition);
-
-            if (entryMagic != 0x00100010)
-            {
-                throw new InvalidDataException(
-                    "DAT ÎÄ¼şÖĞµÄÌõÄ¿¸ñÊ½ÎŞĞ§¡£");
-            }
-
-            var phraseOffset =
-                ReadUInt16(
-                    data,
-                    entryPosition + 4);
-
-            var position =
-                data[entryPosition + 6];
-
-            var pinyinStart =
-                entryPosition + 0x10;
-
-            var pinyinEnd =
-                FindUtf16Null(
-                    data,
-                    pinyinStart);
-
-            if (pinyinEnd < 0)
-            {
-                throw new InvalidDataException(
-                    "DAT ÎÄ¼şÖĞµÄÆ´Òô×Ö·û´®ÎŞĞ§¡£");
-            }
-
-            var pinyin =
-                Encoding.Unicode.GetString(
-                    data,
-                    pinyinStart,
-                    pinyinEnd - pinyinStart);
-
-            var phraseStartPosition =
-                entryPosition +
-                4 +
-                phraseOffset;
-
-            if (phraseStartPosition < 0 ||
-                phraseStartPosition >= data.Length)
-            {
-                throw new InvalidDataException(
-                    "DAT ÎÄ¼şÖĞµÄÎÄ±¾Æ«ÒÆÎŞĞ§¡£");
-            }
-
-            var phraseEnd =
-                FindUtf16Null(
-                    data,
-                    phraseStartPosition);
-
-            if (phraseEnd < 0)
-            {
-                throw new InvalidDataException(
-                    "DAT ÎÄ¼şÖĞµÄÎÄ±¾×Ö·û´®ÎŞĞ§¡£");
-            }
-
-            var phrase =
-                Encoding.Unicode.GetString(
-                    data,
-                    phraseStartPosition,
-                    phraseEnd - phraseStartPosition);
-
-            result.Add(
-                new PhraseEntry(
-                    pinyin,
-                    position,
-                    phrase));
-        }
-
-        return result;
-    }
-
-    private static void WriteDat(
-        string file,
-        List<PhraseEntry> entries)
-    {
-        var directory =
-            Path.GetDirectoryName(file);
-
-        if (!string.IsNullOrEmpty(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        using var stream =
-            new MemoryStream();
-
-        using var writer =
-            new BinaryWriter(stream);
-
-        writer.Write(
-            Encoding.ASCII.GetBytes(
-                "mschxudp"));
-
-        writer.Write(0);
-        writer.Write(0x00600002);
-        writer.Write(1);
-        writer.Write(0x40);
-
-        var phraseStart =
-            0x40 +
-            entries.Count * 4;
-
-        writer.Write(phraseStart);
-
-        var fileSizePosition =
-            stream.Position;
-
-        writer.Write(0);
-
-        writer.Write(entries.Count);
-
-        writer.Write(
-            DateTimeOffset.UtcNow
-                .ToUnixTimeSeconds());
-
-        while (stream.Position < 0x40)
-        {
-            writer.Write((byte)0);
-        }
-
-        var offsets =
-            new List<int>(
-                entries.Count);
-
-        using var entryStream =
-            new MemoryStream();
-
-        using var entryWriter =
-            new BinaryWriter(entryStream);
-
-        foreach (var entry in entries)
-        {
-            offsets.Add(
-                checked(
-                    (int)entryStream.Position));
-
-            var pinyinBytes =
-                Encoding.Unicode.GetBytes(
-                    entry.Pinyin);
-
-            var phraseBytes =
-                Encoding.Unicode.GetBytes(
-                    entry.Phrase);
-
-            entryWriter.Write(
-                0x00100010u);
-
-            var phraseOffset =
-                checked(
-                    (ushort)(
-                        0x0E +
-                        pinyinBytes.Length));
-
-            entryWriter.Write(
-                phraseOffset);
-
-            entryWriter.Write(
-                entry.Position);
-
-            entryWriter.Write(
-                (byte)0x06);
-
-            entryWriter.Write(0u);
-
-            entryWriter.Write(
-                0x323E4BD0u);
-
-            entryWriter.Write(
-                pinyinBytes);
-
-            entryWriter.Write(
-                (ushort)0);
-
-            entryWriter.Write(
-                phraseBytes);
-
-            entryWriter.Write(
-                (ushort)0);
-        }
-
-        foreach (var offset in offsets)
-        {
-            writer.Write(offset);
-        }
-
-        writer.Write(
-            entryStream.ToArray());
-
-        var fileSize =
-            checked(
-                (int)stream.Length);
-
-        stream.Position =
-            fileSizePosition;
-
-        writer.Write(fileSize);
-
-        writer.Flush();
-
-        File.WriteAllBytes(
-            file,
-            stream.ToArray());
-    }
-
-    private static int ReadInt32(
-        byte[] data,
-        int offset)
-    {
-        return BitConverter.ToInt32(
-            data,
-            offset);
-    }
-
-    private static uint ReadUInt32(
-        byte[] data,
-        int offset)
-    {
-        return BitConverter.ToUInt32(
-            data,
-            offset);
-    }
-
-    private static ushort ReadUInt16(
-        byte[] data,
-        int offset)
-    {
-        return BitConverter.ToUInt16(
-            data,
-            offset);
-    }
-
-    private static int FindUtf16Null(
-        byte[] data,
-        int start)
-    {
-        for (var i = start;
-             i + 1 < data.Length;
-             i += 2)
-        {
-            if (data[i] == 0 &&
-                data[i + 1] == 0)
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
-    // ============================================================
-    // Model
-    // ============================================================
-
-    private sealed class PhraseEntry
-    {
-        public string Pinyin { get; }
-
-        public byte Position { get; }
-
-        public string Phrase { get; }
-
-        public PhraseEntry(
-            string pinyin,
-            byte position,
-            string phrase)
-        {
-            Pinyin = pinyin;
-            Position = position;
-            Phrase = phrase;
-        }
+        finally { Enabled = true; UseWaitCursor = false; }
     }
 }
